@@ -249,6 +249,7 @@ class CreditLedgerEntry(AccountScopedMixin, Base):
     __tablename__ = "credit_ledger_entries"
     __table_args__ = (
         Index("ix_credit_ledger_entries_account_created_at", "account_id", "created_at"),
+        Index("ix_credit_ledger_entries_transaction_id", "transaction_id"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -256,6 +257,30 @@ class CreditLedgerEntry(AccountScopedMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     entry_type: Mapped[str] = mapped_column(String(64), nullable=False)
     reference_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    transaction_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    ledger_account: Mapped[str] = mapped_column(String(128), nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount_micro_usd: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class CreditLedgerTransaction(AccountScopedMixin, Base):
+    __tablename__ = "credit_ledger_transactions"
+    __table_args__ = (
+        Index("ix_credit_ledger_transactions_account_created_at", "account_id", "created_at"),
+        Index("ix_credit_ledger_transactions_transaction_id", "transaction_id", unique=True),
+        UniqueConstraint(
+            "account_id",
+            "idempotency_key",
+            name="uq_credit_ledger_transactions_idempotency",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    transaction_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    transaction_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_micro_usd: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
 
 
 class CreditReservation(AccountScopedMixin, Base):
@@ -324,6 +349,7 @@ __all__ = [
     "AuthorizationResult",
     "BenchmarkCase",
     "CreditLedgerEntry",
+    "CreditLedgerTransaction",
     "CreditReservation",
     "EvidenceItem",
     "Policy",

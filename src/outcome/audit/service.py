@@ -12,6 +12,7 @@ from outcome.db.models import AuditEvent
 
 
 class AuditEventType(StrEnum):
+    ACCOUNT_FUNDED = "account_funded"
     REQUEST_ACCEPTED = "request_accepted"
     POLICY_SELECTED = "policy_selected"
     PROVIDER_ATTEMPTED = "provider_attempted"
@@ -22,6 +23,8 @@ class AuditEventType(StrEnum):
     CREDIT_RESERVED = "credit_reserved"
     CREDIT_SETTLED = "credit_settled"
     CREDIT_RELEASED = "credit_released"
+    CREDIT_REFUND_ADJUSTMENT_CREATED = "credit_refund_adjustment_created"
+    LEDGER_TRANSACTION_CREATED = "ledger_transaction_created"
     RECEIPT_ISSUED = "receipt_issued"
     ESCALATION = "escalation"
     TIMEOUT = "timeout"
@@ -76,7 +79,10 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "score_basis_points",
         "timeout_ms",
         "error_code",
+        "ledger_account",
+        "ledger_transaction_id",
         "timestamp",
+        "transaction_type",
     }
 )
 

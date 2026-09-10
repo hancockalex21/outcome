@@ -23,6 +23,7 @@ EXPECTED_TABLES = {
     "authorization_results",
     "receipts",
     "credit_ledger_entries",
+    "credit_ledger_transactions",
     "credit_reservations",
     "audit_events",
     "benchmark_cases",
@@ -51,6 +52,9 @@ EXPECTED_INDEXES = {
     "ix_receipts_receipt_id",
     "ix_credit_ledger_entries_account_created_at",
     "ix_credit_reservations_account_created_at",
+    "ix_credit_ledger_entries_transaction_id",
+    "ix_credit_ledger_transactions_account_created_at",
+    "ix_credit_ledger_transactions_transaction_id",
     "ix_audit_events_account_created_at",
     "ix_audit_events_request_id",
     "ix_benchmark_cases_account_created_at",
@@ -87,12 +91,28 @@ def test_agent_credentials_do_not_store_plaintext_api_keys() -> None:
     assert "key_ciphertext_ref" in columns
 
 
+def test_ledger_money_columns_are_integer_microdollars() -> None:
+    entries = metadata.tables["credit_ledger_entries"]
+    transactions = metadata.tables["credit_ledger_transactions"]
+
+    assert isinstance(entries.columns["amount_micro_usd"].type, sa.Integer)
+    assert isinstance(transactions.columns["amount_micro_usd"].type, sa.Integer)
+    assert not any(
+        isinstance(column.type, sa.Float)
+        for table in metadata.tables.values()
+        for column in table.columns
+    )
+
+
 def test_control_plane_migration_upgrades_and_downgrades() -> None:
     base_migration = importlib.import_module(
         "migrations.versions.20260910_0001_create_control_plane_tables"
     )
     api_key_migration = importlib.import_module(
         "migrations.versions.20260910_0002_add_agent_api_key_fields"
+    )
+    ledger_migration = importlib.import_module(
+        "migrations.versions.20260910_0003_add_double_entry_ledger_fields"
     )
     engine = sa.create_engine("sqlite:///:memory:")
 
@@ -101,9 +121,11 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         operations = Operations(context)
         base_migration.op = operations
         api_key_migration.op = operations
+        ledger_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
+        ledger_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -113,6 +135,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        ledger_migration.downgrade()
         api_key_migration.downgrade()
         base_migration.downgrade()
 
