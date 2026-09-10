@@ -1,0 +1,63 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      OUTCOME_ENV: local
+      OUTCOME_LOG_LEVEL: info
+      OUTCOME_API_HOST: 0.0.0.0
+      OUTCOME_API_PORT: 8000
+      OUTCOME_DATABASE_URL: postgresql+asyncpg://outcome@postgres:5432/outcome
+      OUTCOME_REDIS_URL: redis://redis:6379/0
+      OUTCOME_OTEL_SERVICE_NAME: outcome-api
+      OUTCOME_OTEL_EXPORTER_OTLP_ENDPOINT: ""
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      OUTCOME_ENV: local
+      OUTCOME_LOG_LEVEL: info
+      OUTCOME_DATABASE_URL: postgresql+asyncpg://outcome@postgres:5432/outcome
+      OUTCOME_REDIS_URL: redis://redis:6379/0
+      OUTCOME_OTEL_SERVICE_NAME: outcome-worker
+      OUTCOME_OTEL_EXPORTER_OTLP_ENDPOINT: ""
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: outcome
+      POSTGRES_USER: outcome
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U outcome -d outcome"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
