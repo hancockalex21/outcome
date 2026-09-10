@@ -37,6 +37,8 @@ class AuditEventType(StrEnum):
     RECEIPT_VERIFICATION_FAILED = "receipt_verification_failed"
     EXPIRED_RECEIPT_PRESENTED = "expired_receipt_presented"
     UNKNOWN_SIGNING_KEY = "unknown_signing_key"
+    EXECUTION_AUTHORIZATION_VALIDATED = "execution_authorization_validated"
+    EXECUTION_AUTHORIZATION_REJECTED = "execution_authorization_rejected"
     ESCALATION = "escalation"
     TIMEOUT = "timeout"
     PROVIDER_FAILURE = "provider_failure"
