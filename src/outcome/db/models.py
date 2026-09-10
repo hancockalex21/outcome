@@ -241,7 +241,21 @@ class Receipt(AccountScopedMixin, Base):
         ForeignKey("authorization_results.id", ondelete="SET NULL"),
         nullable=True,
     )
+    authorization_request_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "authorization_requests.id",
+            name="fk_receipts_authorization_request_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
     receipt_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    canonical_payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    action_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    signature: Mapped[str] = mapped_column(String(512), nullable=False)
+    signing_key_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

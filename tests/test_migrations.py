@@ -114,6 +114,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     ledger_migration = importlib.import_module(
         "migrations.versions.20260910_0003_add_double_entry_ledger_fields"
     )
+    receipt_migration = importlib.import_module(
+        "migrations.versions.20260910_0004_add_signed_receipt_fields"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -122,10 +125,12 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         base_migration.op = operations
         api_key_migration.op = operations
         ledger_migration.op = operations
+        receipt_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
         ledger_migration.upgrade()
+        receipt_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -135,6 +140,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        receipt_migration.downgrade()
         ledger_migration.downgrade()
         api_key_migration.downgrade()
         base_migration.downgrade()

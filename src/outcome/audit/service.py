@@ -33,6 +33,10 @@ class AuditEventType(StrEnum):
     RESERVATION_SETTLED = "reservation_settled"
     SPEND_QUARANTINED = "spend_quarantined"
     RECEIPT_ISSUED = "receipt_issued"
+    RECEIPT_VERIFICATION_SUCCEEDED = "receipt_verification_succeeded"
+    RECEIPT_VERIFICATION_FAILED = "receipt_verification_failed"
+    EXPIRED_RECEIPT_PRESENTED = "expired_receipt_presented"
+    UNKNOWN_SIGNING_KEY = "unknown_signing_key"
     ESCALATION = "escalation"
     TIMEOUT = "timeout"
     PROVIDER_FAILURE = "provider_failure"
@@ -86,6 +90,8 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "provider_attempt_id",
         "verification_result_id",
         "authorization_result_id",
+        "authorization_request_id",
+        "action_hash",
         "score_basis_points",
         "timeout_ms",
         "error_code",
@@ -94,8 +100,11 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "maximum_reserved_micro_usd",
         "pricing_config_version",
         "quoted_price_micro_usd",
+        "receipt_version",
+        "receipt_verification_status",
         "reservation_id",
         "reservation_state",
+        "signing_key_id",
         "timestamp",
         "transaction_type",
     }
