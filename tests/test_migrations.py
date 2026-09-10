@@ -31,6 +31,7 @@ EXPECTED_TABLES = {
 
 EXPECTED_INDEXES = {
     "ix_agent_credentials_account_created_at",
+    "ix_agent_credentials_key_prefix",
     "ix_policies_account_created_at",
     "ix_provider_rights_account_created_at",
     "ix_providers_account_created_at",
@@ -81,20 +82,28 @@ def test_agent_credentials_do_not_store_plaintext_api_keys() -> None:
     assert "api_key" not in columns
     assert "plaintext_api_key" not in columns
     assert "key_fingerprint" in columns
+    assert "key_prefix" in columns
+    assert "key_hash" in columns
     assert "key_ciphertext_ref" in columns
 
 
 def test_control_plane_migration_upgrades_and_downgrades() -> None:
-    migration = importlib.import_module(
+    base_migration = importlib.import_module(
         "migrations.versions.20260910_0001_create_control_plane_tables"
+    )
+    api_key_migration = importlib.import_module(
+        "migrations.versions.20260910_0002_add_agent_api_key_fields"
     )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
         context = MigrationContext.configure(connection)
-        migration.op = Operations(context)
+        operations = Operations(context)
+        base_migration.op = operations
+        api_key_migration.op = operations
 
-        migration.upgrade()
+        base_migration.upgrade()
+        api_key_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -104,7 +113,8 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
-        migration.downgrade()
+        api_key_migration.downgrade()
+        base_migration.downgrade()
 
         inspector = sa.inspect(connection)
         assert set(inspector.get_table_names()) == set()

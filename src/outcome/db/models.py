@@ -45,6 +45,7 @@ class AgentCredential(AccountScopedMixin, Base):
     __tablename__ = "agent_credentials"
     __table_args__ = (
         Index("ix_agent_credentials_account_created_at", "account_id", "created_at"),
+        Index("ix_agent_credentials_key_prefix", "key_prefix", unique=True),
         UniqueConstraint("account_id", "key_fingerprint", name="uq_agent_credentials_fingerprint"),
     )
 
@@ -52,8 +53,13 @@ class AgentCredential(AccountScopedMixin, Base):
     agent_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     key_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
     key_ciphertext_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(256), nullable=False)
+    scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     metadata_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Policy(AccountScopedMixin, Base):
