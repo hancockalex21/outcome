@@ -6,7 +6,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from outcome.actions import ACTION_SCHEMA_VERSION, material_action_hash
+from outcome.actions import (
+    ACTION_SCHEMA_VERSION,
+    ActionBindingContext,
+    action_hash,
+    material_action_hash,
+)
 from outcome.domain import (
     AssuranceLevel,
     EscalationStrategy,
@@ -78,6 +83,9 @@ class AuthorizeAction(OutcomeSchema):
             material=self.material,
             action_schema_version=self.action_schema_version,
         )
+
+    def action_hash(self, binding_context: ActionBindingContext) -> str:
+        return action_hash(material=self.material, binding_context=binding_context)
 
 
 class AuthorizeRequest(OutcomeSchema):

@@ -3,7 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
+from uuid import UUID
 
 ACTION_SCHEMA_VERSION: Literal["action.material.v1"] = "action.material.v1"
 MAX_SAFE_JSON_INTEGER = 9_007_199_254_740_991
@@ -12,6 +15,54 @@ MIN_SAFE_JSON_INTEGER = -MAX_SAFE_JSON_INTEGER
 
 class CanonicalizationError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class ActionBindingContext:
+    account_id: UUID
+    policy_version: str
+    action_schema_version: str
+    authorization_expires_at: datetime
+
+    def canonical_metadata(self) -> dict[str, str]:
+        return {
+            "account_id": str(self.account_id),
+            "action_schema_version": _normalize_schema_version(self.action_schema_version),
+            "authorization_expires_at": normalize_utc_timestamp(self.authorization_expires_at),
+            "policy_version": _normalize_policy_version(self.policy_version),
+        }
+
+
+def action_hash(
+    *,
+    material: Mapping[str, object],
+    binding_context: ActionBindingContext,
+) -> str:
+    canonical = canonical_action_binding_json(
+        material=material,
+        binding_context=binding_context,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def canonical_action_binding_json(
+    *,
+    material: Mapping[str, object],
+    binding_context: ActionBindingContext,
+) -> str:
+    envelope = {
+        "binding": binding_context.canonical_metadata(),
+        "canonical_material_action": canonical_material_json(
+            material=material,
+            action_schema_version=binding_context.action_schema_version,
+        ),
+    }
+    return json.dumps(
+        envelope,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
 
 
 def material_action_hash(
@@ -47,6 +98,19 @@ def _normalize_schema_version(action_schema_version: str) -> str:
     if not action_schema_version:
         raise CanonicalizationError("action_schema_version is required")
     return action_schema_version
+
+
+def _normalize_policy_version(policy_version: str) -> str:
+    if not policy_version:
+        raise CanonicalizationError("policy_version is required")
+    return policy_version
+
+
+def normalize_utc_timestamp(value: datetime) -> str:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise CanonicalizationError("authorization expiry must be timezone-aware")
+    utc_value = value.astimezone(UTC)
+    return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _normalize_value(value: object) -> object:
