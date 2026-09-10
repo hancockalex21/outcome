@@ -34,6 +34,12 @@
       "AuthorizeAction": {
         "additionalProperties": false,
         "properties": {
+          "action_schema_version": {
+            "const": "action.material.v1",
+            "default": "action.material.v1",
+            "title": "Action Schema Version",
+            "type": "string"
+          },
           "ephemeral": {
             "additionalProperties": {
               "$ref": "#/components/schemas/JsonValue"

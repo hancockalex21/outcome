@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from outcome.actions import ACTION_SCHEMA_VERSION, material_action_hash
 from outcome.domain import (
     AssuranceLevel,
     EscalationStrategy,
@@ -60,6 +61,7 @@ class VerifyResponse(OutcomeSchema):
 
 
 class AuthorizeAction(OutcomeSchema):
+    action_schema_version: Literal["action.material.v1"] = ACTION_SCHEMA_VERSION
     name: Annotated[str, Field(min_length=1)]
     target: Annotated[str, Field(min_length=1)]
     material: dict[str, JsonValue] = Field(
@@ -70,6 +72,12 @@ class AuthorizeAction(OutcomeSchema):
         default_factory=dict,
         description="Transient action context that must not be treated as durable fact.",
     )
+
+    def material_hash(self) -> str:
+        return material_action_hash(
+            material=self.material,
+            action_schema_version=self.action_schema_version,
+        )
 
 
 class AuthorizeRequest(OutcomeSchema):
