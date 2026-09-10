@@ -9,6 +9,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from outcome.core.config import get_settings
+from outcome.db import models  # noqa: F401
 from outcome.db.metadata import metadata
 
 config = context.config
