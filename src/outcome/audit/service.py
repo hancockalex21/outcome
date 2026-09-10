@@ -25,6 +25,10 @@ class AuditEventType(StrEnum):
     CREDIT_RELEASED = "credit_released"
     CREDIT_REFUND_ADJUSTMENT_CREATED = "credit_refund_adjustment_created"
     LEDGER_TRANSACTION_CREATED = "ledger_transaction_created"
+    RECONCILIATION_MISMATCH = "reconciliation_mismatch"
+    RESERVATION_EXPIRED = "reservation_expired"
+    RESERVATION_SETTLED = "reservation_settled"
+    SPEND_QUARANTINED = "spend_quarantined"
     RECEIPT_ISSUED = "receipt_issued"
     ESCALATION = "escalation"
     TIMEOUT = "timeout"
@@ -73,6 +77,7 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "reason_codes",
         "receipt_id",
         "billing_reservation_id",
+        "available_micro_usd",
         "provider_attempt_id",
         "verification_result_id",
         "authorization_result_id",
@@ -81,6 +86,9 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "error_code",
         "ledger_account",
         "ledger_transaction_id",
+        "maximum_reserved_micro_usd",
+        "reservation_id",
+        "reservation_state",
         "timestamp",
         "transaction_type",
     }
