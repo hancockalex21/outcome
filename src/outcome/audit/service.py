@@ -16,6 +16,11 @@ class AuditEventType(StrEnum):
     REQUEST_ACCEPTED = "request_accepted"
     POLICY_SELECTED = "policy_selected"
     PROVIDER_ATTEMPTED = "provider_attempted"
+    EVIDENCE_NORMALIZATION_ACCEPTED = "evidence_normalization_accepted"
+    EVIDENCE_NORMALIZATION_REJECTED = "evidence_normalization_rejected"
+    EVIDENCE_TRUNCATED = "evidence_truncated"
+    EVIDENCE_UNSAFE_SOURCE_REJECTED = "evidence_unsafe_source_rejected"
+    EVIDENCE_EXTRACTION_FAILED = "evidence_extraction_failed"
     EVIDENCE_ACCEPTED = "evidence_accepted"
     EVIDENCE_REJECTED = "evidence_rejected"
     SCORE_COMPUTED = "score_computed"
@@ -101,8 +106,15 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "verification_status",
         "policy_decision",
         "evidence_ref",
+        "evidence_id",
         "evidence_hash",
         "evidence_type",
+        "source_class",
+        "extraction_quality",
+        "content_hash",
+        "byte_count",
+        "character_count",
+        "truncated",
         "cost_amount_minor",
         "currency",
         "latency_ms",

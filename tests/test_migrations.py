@@ -133,6 +133,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     customer_credentials_migration = importlib.import_module(
         "migrations.versions.20260914_0007_add_customer_provider_credentials"
     )
+    inert_evidence_migration = importlib.import_module(
+        "migrations.versions.20260914_0008_add_inert_evidence_fields"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -145,6 +148,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         consumption_migration.op = operations
         provider_rights_migration.op = operations
         customer_credentials_migration.op = operations
+        inert_evidence_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
@@ -153,6 +157,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         consumption_migration.upgrade()
         provider_rights_migration.upgrade()
         customer_credentials_migration.upgrade()
+        inert_evidence_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -162,6 +167,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        inert_evidence_migration.downgrade()
         customer_credentials_migration.downgrade()
         provider_rights_migration.downgrade()
         consumption_migration.downgrade()

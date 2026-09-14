@@ -226,6 +226,25 @@ class EvidenceItem(AccountScopedMixin, Base):
     evidence_type: Mapped[str] = mapped_column(String(128), nullable=False)
     evidence_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     evidence_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    provider_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    provider_alias: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    source_class: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    normalized_text: Mapped[str] = mapped_column(String(4096), nullable=False)
+    extraction_method: Mapped[str] = mapped_column(String(128), nullable=False)
+    extraction_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    extraction_quality: Mapped[str] = mapped_column(String(64), nullable=False)
+    authority_metadata: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    lineage_metadata: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    size_metadata: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    safety_flags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class ProviderAttempt(AccountScopedMixin, Base):
