@@ -33,6 +33,11 @@ class AuditEventType(StrEnum):
     PROVIDER_USE_DENIED = "provider_use_denied"
     PROVIDER_RIGHTS_EXPIRED = "provider_rights_expired"
     PROVIDER_RIGHTS_UNKNOWN = "provider_rights_unknown"
+    SECRET_REFERENCE_SELECTED = "secret_reference_selected"
+    SECRET_RESOLUTION_ATTEMPTED = "secret_resolution_attempted"
+    SECRET_RESOLUTION_DENIED = "secret_resolution_denied"
+    SECRET_RESOLUTION_SUCCEEDED = "secret_resolution_succeeded"
+    SECRET_CREDENTIAL_INACTIVE = "secret_credential_inactive"
     RECONCILIATION_MISMATCH = "reconciliation_mismatch"
     RESERVATION_EXPIRED = "reservation_expired"
     RESERVATION_SETTLED = "reservation_settled"
@@ -85,6 +90,11 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "provider_alias",
         "provider_health",
         "provider_id",
+        "secret_ref",
+        "credential_type",
+        "credential_state",
+        "credential_version",
+        "secret_resolution_status",
         "rights_status",
         "rights_version",
         "region",

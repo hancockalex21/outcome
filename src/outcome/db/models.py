@@ -140,6 +140,44 @@ class Provider(AccountScopedMixin, Base):
     config: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
 
 
+class CustomerProviderCredential(AccountScopedMixin, Base):
+    __tablename__ = "customer_provider_credentials"
+    __table_args__ = (
+        Index(
+            "ix_customer_provider_credentials_account_created_at",
+            "account_id",
+            "created_at",
+        ),
+        Index(
+            "ix_customer_provider_credentials_secret_ref",
+            "secret_ref",
+            unique=True,
+        ),
+        UniqueConstraint(
+            "account_id",
+            "provider_id",
+            "secret_ref",
+            name="uq_customer_provider_credentials_scope",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    secret_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("providers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    credential_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    lifecycle_state: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_secret_locator: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    metadata_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class VerificationRequest(AccountScopedMixin, Base):
     __tablename__ = "verification_requests"
     __table_args__ = (
@@ -424,6 +462,7 @@ __all__ = [
     "CreditLedgerEntry",
     "CreditLedgerTransaction",
     "CreditReservation",
+    "CustomerProviderCredential",
     "EvidenceItem",
     "Policy",
     "Provider",
