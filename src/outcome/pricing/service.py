@@ -9,7 +9,12 @@ from outcome.audit import AuditEventType, AuditService
 from outcome.domain import AssuranceLevel, VerificationMode
 
 if TYPE_CHECKING:
-    from outcome.providers import ProviderRightsAuthorizationResult, ProviderRightsRequest
+    from outcome.providers import (
+        ProviderHealthRequest,
+        ProviderHealthResult,
+        ProviderRightsAuthorizationResult,
+        ProviderRightsRequest,
+    )
 
 BASIS_POINTS = 10_000
 
@@ -45,6 +50,16 @@ class ProviderRightsAuthorizer(Protocol):
         *,
         correlation_id: UUID,
     ) -> ProviderRightsAuthorizationResult:
+        raise NotImplementedError
+
+
+class ProviderHealthEvaluator(Protocol):
+    def evaluate(
+        self,
+        request: ProviderHealthRequest,
+        *,
+        correlation_id: UUID,
+    ) -> ProviderHealthResult:
         raise NotImplementedError
 
 
@@ -176,10 +191,12 @@ class PricingService:
         config_store: InMemoryPricingConfigStore,
         audit_service: AuditService | None = None,
         provider_rights_service: ProviderRightsAuthorizer | None = None,
+        provider_health_service: ProviderHealthEvaluator | None = None,
     ) -> None:
         self.config_store = config_store
         self.audit_service = audit_service
         self.provider_rights_service = provider_rights_service
+        self.provider_health_service = provider_health_service
 
     def quote(
         self,
@@ -189,6 +206,7 @@ class PricingService:
         billing_mode: BillingMode,
         correlation_id: UUID,
         provider_rights_request: ProviderRightsRequest | None = None,
+        provider_health_request: ProviderHealthRequest | None = None,
     ) -> PricingQuote:
         config = self.config_store.get(capability=capability, billing_mode=billing_mode)
         if config is None:
@@ -229,6 +247,22 @@ class PricingService:
                     reason=PricingRejectionReason.SUPPLIER_RIGHTS_UNAVAILABLE,
                 )
                 raise PricingQuoteRejected(PricingRejectionReason.SUPPLIER_RIGHTS_UNAVAILABLE)
+
+        if self.provider_health_service is not None and provider_health_request is not None:
+            health = self.provider_health_service.evaluate(
+                provider_health_request,
+                correlation_id=correlation_id,
+            )
+            if not health.usable:
+                self._audit_rejection(
+                    account_id=account_id,
+                    capability=capability,
+                    billing_mode=billing_mode,
+                    correlation_id=correlation_id,
+                    version=config.pricing_config_version,
+                    reason=PricingRejectionReason.PROVIDER_HEALTH_UNSAFE,
+                )
+                raise PricingQuoteRejected(PricingRejectionReason.PROVIDER_HEALTH_UNSAFE)
 
         expected_total_cost = expected_total_cost_micro_usd(config)
         if expected_total_cost > config.maximum_total_cost_micro_usd:

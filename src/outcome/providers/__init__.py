@@ -1,3 +1,16 @@
+from outcome.providers.health import (
+    CircuitState,
+    CrossTenantProviderHealthAccess,
+    ProviderAttemptOutcome,
+    ProviderEligibilityResult,
+    ProviderHealthConfig,
+    ProviderHealthError,
+    ProviderHealthReason,
+    ProviderHealthRequest,
+    ProviderHealthResult,
+    ProviderHealthService,
+    provider_eligibility,
+)
 from outcome.providers.rights import (
     ProviderCredentialMode,
     ProviderDataUse,
@@ -10,12 +23,23 @@ from outcome.providers.rights import (
 )
 
 __all__ = [
+    "CircuitState",
+    "CrossTenantProviderHealthAccess",
     "ProviderCredentialMode",
     "ProviderDataUse",
+    "ProviderAttemptOutcome",
+    "ProviderEligibilityResult",
     "ProviderExecutionMode",
+    "ProviderHealthConfig",
+    "ProviderHealthError",
+    "ProviderHealthReason",
+    "ProviderHealthRequest",
+    "ProviderHealthResult",
+    "ProviderHealthService",
     "ProviderRightsAuthorizationResult",
     "ProviderRightsReason",
     "ProviderRightsRequest",
     "ProviderRightsService",
     "ProviderRightsStatus",
+    "provider_eligibility",
 ]

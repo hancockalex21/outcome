@@ -43,6 +43,13 @@ class AuditEventType(StrEnum):
     PROVIDER_USE_DENIED = "provider_use_denied"
     PROVIDER_RIGHTS_EXPIRED = "provider_rights_expired"
     PROVIDER_RIGHTS_UNKNOWN = "provider_rights_unknown"
+    PROVIDER_HEALTH_EVALUATED = "provider_health_evaluated"
+    PROVIDER_DEGRADED = "provider_degraded"
+    PROVIDER_CIRCUIT_OPENED = "provider_circuit_opened"
+    PROVIDER_CIRCUIT_PROBE_ATTEMPTED = "provider_circuit_probe_attempted"
+    PROVIDER_CIRCUIT_RECOVERED = "provider_circuit_recovered"
+    PROVIDER_MANUALLY_DISABLED = "provider_manually_disabled"
+    PROVIDER_USE_BLOCKED_BY_HEALTH = "provider_use_blocked_by_health"
     SECRET_REFERENCE_SELECTED = "secret_reference_selected"
     SECRET_RESOLUTION_ATTEMPTED = "secret_resolution_attempted"
     SECRET_RESOLUTION_DENIED = "secret_resolution_denied"
@@ -100,6 +107,20 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "provider_alias",
         "provider_health",
         "provider_id",
+        "circuit_state",
+        "retry_after",
+        "next_probe_at",
+        "metrics_version",
+        "window_start",
+        "window_end",
+        "request_count",
+        "success_count",
+        "failure_count",
+        "timeout_count",
+        "consecutive_failures",
+        "rate_limited_count",
+        "system_failure_count",
+        "manually_disabled",
         "secret_ref",
         "credential_type",
         "credential_state",

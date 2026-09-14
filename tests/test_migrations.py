@@ -73,6 +73,7 @@ EXPECTED_INDEXES = {
     "ix_benchmark_cases_account_created_at",
     "ix_provider_metrics_account_created_at",
     "ix_provider_metrics_provider_health",
+    "ix_provider_metrics_provider_capability",
 }
 
 
@@ -145,6 +146,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     evidence_lineage_migration = importlib.import_module(
         "migrations.versions.20260914_0009_add_evidence_lineage"
     )
+    provider_health_migration = importlib.import_module(
+        "migrations.versions.20260914_0010_add_provider_health_metrics"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -159,6 +163,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         customer_credentials_migration.op = operations
         inert_evidence_migration.op = operations
         evidence_lineage_migration.op = operations
+        provider_health_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
@@ -169,6 +174,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         customer_credentials_migration.upgrade()
         inert_evidence_migration.upgrade()
         evidence_lineage_migration.upgrade()
+        provider_health_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -178,6 +184,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        provider_health_migration.downgrade()
         evidence_lineage_migration.downgrade()
         inert_evidence_migration.downgrade()
         customer_credentials_migration.downgrade()

@@ -538,6 +538,13 @@ class ProviderMetric(AccountScopedMixin, Base):
     __table_args__ = (
         Index("ix_provider_metrics_account_created_at", "account_id", "created_at"),
         Index("ix_provider_metrics_provider_health", "provider_id", "provider_health"),
+        Index("ix_provider_metrics_provider_capability", "provider_id", "capability"),
+        UniqueConstraint(
+            "account_id",
+            "provider_id",
+            "capability",
+            name="uq_provider_metrics_capability",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -550,6 +557,31 @@ class ProviderMetric(AccountScopedMixin, Base):
     metric_name: Mapped[str] = mapped_column(String(128), nullable=False)
     metric_value: Mapped[int] = mapped_column(Integer, nullable=False)
     dimensions: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    capability: Mapped[str] = mapped_column(String(128), nullable=False)
+    metrics_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    timeout_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rate_limited_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    system_failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_total_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_max_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    current_health: Mapped[str] = mapped_column(String(64), nullable=False)
+    circuit_state: Mapped[str] = mapped_column(String(64), nullable=False)
+    circuit_opened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    circuit_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    manually_disabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 __all__ = [
