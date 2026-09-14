@@ -36,6 +36,7 @@ EXPECTED_INDEXES = {
     "ix_agent_credentials_key_prefix",
     "ix_policies_account_created_at",
     "ix_provider_rights_account_created_at",
+    "ix_provider_rights_provider_capability",
     "ix_providers_account_created_at",
     "ix_providers_health",
     "ix_verification_requests_account_created_at",
@@ -123,6 +124,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     consumption_migration = importlib.import_module(
         "migrations.versions.20260914_0005_add_receipt_consumptions"
     )
+    provider_rights_migration = importlib.import_module(
+        "migrations.versions.20260914_0006_add_provider_rights_fields"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -133,12 +137,14 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         ledger_migration.op = operations
         receipt_migration.op = operations
         consumption_migration.op = operations
+        provider_rights_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
         ledger_migration.upgrade()
         receipt_migration.upgrade()
         consumption_migration.upgrade()
+        provider_rights_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -148,6 +154,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        provider_rights_migration.downgrade()
         consumption_migration.downgrade()
         receipt_migration.downgrade()
         ledger_migration.downgrade()

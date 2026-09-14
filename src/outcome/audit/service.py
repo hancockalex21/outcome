@@ -28,6 +28,11 @@ class AuditEventType(StrEnum):
     CAPABILITY_UNAVAILABLE = "capability_unavailable"
     PRICING_QUOTE_GENERATED = "pricing_quote_generated"
     PRICING_QUOTE_REJECTED = "pricing_quote_rejected"
+    PROVIDER_RIGHTS_EVALUATED = "provider_rights_evaluated"
+    PROVIDER_USE_ALLOWED = "provider_use_allowed"
+    PROVIDER_USE_DENIED = "provider_use_denied"
+    PROVIDER_RIGHTS_EXPIRED = "provider_rights_expired"
+    PROVIDER_RIGHTS_UNKNOWN = "provider_rights_unknown"
     RECONCILIATION_MISMATCH = "reconciliation_mismatch"
     RESERVATION_EXPIRED = "reservation_expired"
     RESERVATION_SETTLED = "reservation_settled"
@@ -80,6 +85,9 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "provider_alias",
         "provider_health",
         "provider_id",
+        "rights_status",
+        "rights_version",
+        "region",
         "verification_status",
         "policy_decision",
         "evidence_ref",

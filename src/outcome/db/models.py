@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
 
@@ -77,6 +77,7 @@ class ProviderRight(AccountScopedMixin, Base):
     __tablename__ = "provider_rights"
     __table_args__ = (
         Index("ix_provider_rights_account_created_at", "account_id", "created_at"),
+        Index("ix_provider_rights_provider_capability", "provider_id", "capability"),
         UniqueConstraint("account_id", "provider_id", "right_name", name="uq_provider_rights_name"),
     )
 
@@ -87,6 +88,42 @@ class ProviderRight(AccountScopedMixin, Base):
         nullable=False,
     )
     right_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_alias: Mapped[str] = mapped_column(String(255), nullable=False)
+    capability: Mapped[str] = mapped_column(String(128), nullable=False)
+    billing_mode: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    rights_status: Mapped[str] = mapped_column(String(64), nullable=False)
+    permitted_regions: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    permitted_data_use: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    permitted_execution_modes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    customer_secret_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    outcome_managed_credential_allowed: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+    customer_managed_credential_allowed: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+    evidence_retention_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    caching_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    commercial_usage_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    automated_agent_usage_allowed: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+    rights_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reason_code: Mapped[str] = mapped_column(String(128), nullable=False)
+    tenant_restrictions: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
     constraints: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
 
 

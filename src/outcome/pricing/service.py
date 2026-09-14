@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from outcome.audit import AuditEventType, AuditService
 from outcome.domain import AssuranceLevel, VerificationMode
+
+if TYPE_CHECKING:
+    from outcome.providers import ProviderRightsAuthorizationResult, ProviderRightsRequest
 
 BASIS_POINTS = 10_000
 
@@ -32,6 +36,16 @@ class PricingQuoteRejected(ValueError):
     def __init__(self, reason: PricingRejectionReason) -> None:
         super().__init__(reason.value)
         self.reason = reason
+
+
+class ProviderRightsAuthorizer(Protocol):
+    def authorize(
+        self,
+        request: ProviderRightsRequest,
+        *,
+        correlation_id: UUID,
+    ) -> ProviderRightsAuthorizationResult:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -161,9 +175,11 @@ class PricingService:
         *,
         config_store: InMemoryPricingConfigStore,
         audit_service: AuditService | None = None,
+        provider_rights_service: ProviderRightsAuthorizer | None = None,
     ) -> None:
         self.config_store = config_store
         self.audit_service = audit_service
+        self.provider_rights_service = provider_rights_service
 
     def quote(
         self,
@@ -172,6 +188,7 @@ class PricingService:
         capability: CapabilityName,
         billing_mode: BillingMode,
         correlation_id: UUID,
+        provider_rights_request: ProviderRightsRequest | None = None,
     ) -> PricingQuote:
         config = self.config_store.get(capability=capability, billing_mode=billing_mode)
         if config is None:
@@ -196,6 +213,22 @@ class PricingService:
                 reason=rejection,
             )
             raise PricingQuoteRejected(rejection)
+
+        if self.provider_rights_service is not None and provider_rights_request is not None:
+            rights = self.provider_rights_service.authorize(
+                provider_rights_request,
+                correlation_id=correlation_id,
+            )
+            if not rights.allowed:
+                self._audit_rejection(
+                    account_id=account_id,
+                    capability=capability,
+                    billing_mode=billing_mode,
+                    correlation_id=correlation_id,
+                    version=config.pricing_config_version,
+                    reason=PricingRejectionReason.SUPPLIER_RIGHTS_UNAVAILABLE,
+                )
+                raise PricingQuoteRejected(PricingRejectionReason.SUPPLIER_RIGHTS_UNAVAILABLE)
 
         expected_total_cost = expected_total_cost_micro_usd(config)
         if expected_total_cost > config.maximum_total_cost_micro_usd:
