@@ -1,3 +1,20 @@
+from outcome.evidence.lineage import (
+    CrossTenantLineageAccess,
+    EvidenceGraphEdge,
+    EvidenceGraphNode,
+    EvidenceIndependenceRelationship,
+    EvidenceIndependenceResult,
+    EvidenceLineageCycleRejected,
+    EvidenceLineageError,
+    EvidenceLineageGraph,
+    EvidenceLineageInput,
+    EvidenceLineageRecord,
+    EvidenceLineageRejected,
+    EvidenceLineageService,
+    EvidenceLineageType,
+    EvidenceRelationshipType,
+    normalize_source_identity,
+)
 from outcome.evidence.normalizer import (
     EvidenceNormalizationError,
     EvidenceNormalizationInput,
@@ -9,11 +26,26 @@ from outcome.evidence.normalizer import (
 )
 
 __all__ = [
+    "CrossTenantLineageAccess",
+    "EvidenceGraphEdge",
+    "EvidenceGraphNode",
+    "EvidenceIndependenceRelationship",
+    "EvidenceIndependenceResult",
+    "EvidenceLineageCycleRejected",
+    "EvidenceLineageError",
+    "EvidenceLineageGraph",
+    "EvidenceLineageInput",
+    "EvidenceLineageRecord",
+    "EvidenceLineageRejected",
+    "EvidenceLineageService",
+    "EvidenceLineageType",
     "EvidenceNormalizationError",
     "EvidenceNormalizationInput",
     "EvidenceNormalizer",
+    "EvidenceRelationshipType",
     "ExtractionQuality",
     "InertEvidence",
     "SourceClass",
     "UnsafeSourceReference",
+    "normalize_source_identity",
 ]

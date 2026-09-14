@@ -21,6 +21,11 @@ class AuditEventType(StrEnum):
     EVIDENCE_TRUNCATED = "evidence_truncated"
     EVIDENCE_UNSAFE_SOURCE_REJECTED = "evidence_unsafe_source_rejected"
     EVIDENCE_EXTRACTION_FAILED = "evidence_extraction_failed"
+    EVIDENCE_LINEAGE_RECORDED = "evidence_lineage_recorded"
+    EVIDENCE_LINEAGE_RELATIONSHIP_REJECTED = "evidence_lineage_relationship_rejected"
+    EVIDENCE_INDEPENDENCE_EVALUATED = "evidence_independence_evaluated"
+    EVIDENCE_SHARED_ORIGIN_DETECTED = "evidence_shared_origin_detected"
+    EVIDENCE_UNKNOWN_LINEAGE_ENCOUNTERED = "evidence_unknown_lineage_encountered"
     EVIDENCE_ACCEPTED = "evidence_accepted"
     EVIDENCE_REJECTED = "evidence_rejected"
     SCORE_COMPUTED = "score_computed"
@@ -109,7 +114,18 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "evidence_id",
         "evidence_hash",
         "evidence_type",
+        "left_evidence_id",
+        "right_evidence_id",
+        "parent_evidence_id",
+        "child_evidence_id",
         "source_class",
+        "lineage_type",
+        "lineage_version",
+        "relationship_type",
+        "independence_result",
+        "shared_origin",
+        "source_identity_hash",
+        "origin_reference",
         "extraction_quality",
         "content_hash",
         "byte_count",

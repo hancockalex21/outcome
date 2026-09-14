@@ -19,6 +19,8 @@ EXPECTED_TABLES = {
     "verification_requests",
     "authorization_requests",
     "evidence_items",
+    "evidence_lineages",
+    "evidence_lineage_relationships",
     "provider_attempts",
     "verification_results",
     "authorization_results",
@@ -47,6 +49,10 @@ EXPECTED_INDEXES = {
     "ix_authorization_requests_account_created_at",
     "ix_authorization_requests_request_id",
     "ix_evidence_items_account_created_at",
+    "ix_evidence_lineages_account_created_at",
+    "ix_evidence_lineages_request",
+    "ix_evidence_lineage_relationships_account_created_at",
+    "ix_evidence_lineage_relationships_request",
     "ix_provider_attempts_account_created_at",
     "ix_provider_attempts_provider_health",
     "ix_verification_results_account_created_at",
@@ -136,6 +142,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     inert_evidence_migration = importlib.import_module(
         "migrations.versions.20260914_0008_add_inert_evidence_fields"
     )
+    evidence_lineage_migration = importlib.import_module(
+        "migrations.versions.20260914_0009_add_evidence_lineage"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -149,6 +158,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         provider_rights_migration.op = operations
         customer_credentials_migration.op = operations
         inert_evidence_migration.op = operations
+        evidence_lineage_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
@@ -158,6 +168,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         provider_rights_migration.upgrade()
         customer_credentials_migration.upgrade()
         inert_evidence_migration.upgrade()
+        evidence_lineage_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -167,6 +178,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        evidence_lineage_migration.downgrade()
         inert_evidence_migration.downgrade()
         customer_credentials_migration.downgrade()
         provider_rights_migration.downgrade()

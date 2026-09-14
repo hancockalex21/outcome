@@ -247,6 +247,87 @@ class EvidenceItem(AccountScopedMixin, Base):
     truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
+class EvidenceLineage(AccountScopedMixin, Base):
+    __tablename__ = "evidence_lineages"
+    __table_args__ = (
+        Index("ix_evidence_lineages_account_created_at", "account_id", "created_at"),
+        Index("ix_evidence_lineages_request", "account_id", "verification_request_id"),
+        UniqueConstraint(
+            "account_id",
+            "evidence_id",
+            "lineage_version",
+            name="uq_evidence_lineages_version",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    evidence_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evidence_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    verification_request_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("verification_requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    source_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    source_class: Mapped[str] = mapped_column(String(64), nullable=False)
+    lineage_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    publisher_identity: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    canonical_source_identity: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    origin_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    origin_identity_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lineage_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    lineage_metadata: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class EvidenceLineageRelationship(AccountScopedMixin, Base):
+    __tablename__ = "evidence_lineage_relationships"
+    __table_args__ = (
+        Index(
+            "ix_evidence_lineage_relationships_account_created_at",
+            "account_id",
+            "created_at",
+        ),
+        Index(
+            "ix_evidence_lineage_relationships_request",
+            "account_id",
+            "verification_request_id",
+        ),
+        UniqueConstraint(
+            "account_id",
+            "parent_evidence_id",
+            "child_evidence_id",
+            "relationship_type",
+            "lineage_version",
+            name="uq_evidence_lineage_relationships_edge",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    verification_request_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("verification_requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    parent_evidence_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evidence_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    child_evidence_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evidence_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    relationship_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    lineage_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
 class ProviderAttempt(AccountScopedMixin, Base):
     __tablename__ = "provider_attempts"
     __table_args__ = (
@@ -483,6 +564,8 @@ __all__ = [
     "CreditReservation",
     "CustomerProviderCredential",
     "EvidenceItem",
+    "EvidenceLineage",
+    "EvidenceLineageRelationship",
     "Policy",
     "Provider",
     "ProviderAttempt",
