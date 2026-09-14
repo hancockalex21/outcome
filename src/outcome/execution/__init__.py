@@ -1,3 +1,8 @@
+from outcome.execution.consumption import (
+    ReceiptConsumptionResult,
+    ReceiptConsumptionService,
+    ReceiptConsumptionStatus,
+)
 from outcome.execution.service import (
     ExecutionAuthorizationRequest,
     ExecutionAuthorizationResult,
@@ -10,4 +15,7 @@ __all__ = [
     "ExecutionAuthorizationResult",
     "ExecutionAuthorizationStatus",
     "ExecutionAuthorizationValidator",
+    "ReceiptConsumptionResult",
+    "ReceiptConsumptionService",
+    "ReceiptConsumptionStatus",
 ]

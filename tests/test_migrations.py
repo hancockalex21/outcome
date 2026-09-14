@@ -22,6 +22,7 @@ EXPECTED_TABLES = {
     "verification_results",
     "authorization_results",
     "receipts",
+    "receipt_consumptions",
     "credit_ledger_entries",
     "credit_ledger_transactions",
     "credit_reservations",
@@ -50,6 +51,8 @@ EXPECTED_INDEXES = {
     "ix_authorization_results_request_id",
     "ix_receipts_account_created_at",
     "ix_receipts_receipt_id",
+    "ix_receipt_consumptions_account_created_at",
+    "ix_receipt_consumptions_receipt_id",
     "ix_credit_ledger_entries_account_created_at",
     "ix_credit_reservations_account_created_at",
     "ix_credit_ledger_entries_transaction_id",
@@ -117,6 +120,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     receipt_migration = importlib.import_module(
         "migrations.versions.20260910_0004_add_signed_receipt_fields"
     )
+    consumption_migration = importlib.import_module(
+        "migrations.versions.20260914_0005_add_receipt_consumptions"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -126,11 +132,13 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         api_key_migration.op = operations
         ledger_migration.op = operations
         receipt_migration.op = operations
+        consumption_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
         ledger_migration.upgrade()
         receipt_migration.upgrade()
+        consumption_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -140,6 +148,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        consumption_migration.downgrade()
         receipt_migration.downgrade()
         ledger_migration.downgrade()
         api_key_migration.downgrade()

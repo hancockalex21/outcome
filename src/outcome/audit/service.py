@@ -39,6 +39,11 @@ class AuditEventType(StrEnum):
     UNKNOWN_SIGNING_KEY = "unknown_signing_key"
     EXECUTION_AUTHORIZATION_VALIDATED = "execution_authorization_validated"
     EXECUTION_AUTHORIZATION_REJECTED = "execution_authorization_rejected"
+    RECEIPT_CONSUMPTION_SUCCEEDED = "receipt_consumption_succeeded"
+    RECEIPT_REPLAY_DETECTED = "receipt_replay_detected"
+    RECEIPT_IDEMPOTENT_EXECUTION_REPLAY = "receipt_idempotent_execution_replay"
+    RECEIPT_CONSUMPTION_CONFLICT = "receipt_consumption_conflict"
+    RECEIPT_CONSUMPTION_SYSTEM_FAILURE = "receipt_consumption_system_failure"
     ESCALATION = "escalation"
     TIMEOUT = "timeout"
     PROVIDER_FAILURE = "provider_failure"
@@ -85,6 +90,8 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "latency_ms",
         "reason_codes",
         "receipt_id",
+        "consumption_id",
+        "execution_request_id",
         "billing_reservation_id",
         "available_micro_usd",
         "billing_mode",

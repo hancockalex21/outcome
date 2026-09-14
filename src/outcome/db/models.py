@@ -259,6 +259,28 @@ class Receipt(AccountScopedMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ReceiptConsumption(AccountScopedMixin, Base):
+    __tablename__ = "receipt_consumptions"
+    __table_args__ = (
+        Index("ix_receipt_consumptions_account_created_at", "account_id", "created_at"),
+        Index("ix_receipt_consumptions_receipt_id", "receipt_id"),
+        UniqueConstraint("account_id", "receipt_id", name="uq_receipt_consumptions_receipt"),
+        UniqueConstraint(
+            "account_id",
+            "execution_request_id",
+            name="uq_receipt_consumptions_execution_request",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    consumption_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    receipt_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    authorization_request_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    action_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    consumed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    execution_request_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+
+
 class CreditLedgerEntry(AccountScopedMixin, Base):
     __tablename__ = "credit_ledger_entries"
     __table_args__ = (
@@ -372,6 +394,7 @@ __all__ = [
     "ProviderMetric",
     "ProviderRight",
     "Receipt",
+    "ReceiptConsumption",
     "VerificationRequest",
     "VerificationResult",
 ]
