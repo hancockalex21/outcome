@@ -183,7 +183,13 @@ class VerificationRequest(AccountScopedMixin, Base):
     __table_args__ = (
         Index("ix_verification_requests_account_created_at", "account_id", "created_at"),
         Index("ix_verification_requests_request_id", "request_id"),
+        Index("ix_verification_requests_idempotency", "account_id", "idempotency_key"),
         UniqueConstraint("request_id", name="uq_verification_requests_request_id"),
+        UniqueConstraint(
+            "account_id",
+            "idempotency_key",
+            name="uq_verification_requests_idempotency",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -193,6 +199,17 @@ class VerificationRequest(AccountScopedMixin, Base):
     requested_assurance: Mapped[str] = mapped_column(String(64), nullable=False)
     claim_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     subject_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lifecycle_state: Mapped[str] = mapped_column(String(64), nullable=False, default="RECEIVED")
+    request_config_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lifecycle_metadata: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AuthorizationRequest(AccountScopedMixin, Base):

@@ -77,6 +77,20 @@ class AuditEventType(StrEnum):
     TIMEOUT = "timeout"
     PROVIDER_FAILURE = "provider_failure"
     SYSTEM_FAILURE = "system_failure"
+    VERIFICATION_RECEIVED = "verification_received"
+    VERIFICATION_PROVIDER_ELIGIBILITY_EVALUATED = (
+        "verification_provider_eligibility_evaluated"
+    )
+    VERIFICATION_PROVIDER_ATTEMPT_STARTED = "verification_provider_attempt_started"
+    VERIFICATION_PROVIDER_ATTEMPT_COMPLETED = "verification_provider_attempt_completed"
+    VERIFICATION_LINEAGE_COMPLETED = "verification_lineage_completed"
+    VERIFICATION_EVIDENCE_ASSESSMENT_COMPLETED = (
+        "verification_evidence_assessment_completed"
+    )
+    VERIFICATION_COMPLETED = "verification_completed"
+    VERIFICATION_FAILED = "verification_failed"
+    VERIFICATION_IDEMPOTENT_REPLAY = "verification_idempotent_replay"
+    VERIFICATION_IDEMPOTENCY_CONFLICT = "verification_idempotency_conflict"
 
 
 class AuditPayloadRejected(ValueError):
@@ -104,8 +118,12 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "agent_credential_id",
         "agent_key_prefix",
         "request_id",
+        "request_fingerprint",
+        "idempotency_key",
         "correlation_id",
         "event_type",
+        "lifecycle_state",
+        "request_config_version",
         "provider_alias",
         "provider_health",
         "provider_id",
@@ -184,6 +202,9 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "final_score",
         "evidence_ids_used",
         "evidence_ids_excluded",
+        "providers_contributed",
+        "providers_failed",
+        "lineage_versions",
         "timeout_ms",
         "error_code",
         "ledger_account",
