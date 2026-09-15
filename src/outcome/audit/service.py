@@ -29,6 +29,8 @@ class AuditEventType(StrEnum):
     EVIDENCE_ACCEPTED = "evidence_accepted"
     EVIDENCE_REJECTED = "evidence_rejected"
     SCORE_COMPUTED = "score_computed"
+    EVIDENCE_EXCLUDED_FROM_SCORING = "evidence_excluded_from_scoring"
+    VERIFICATION_STATUS_DERIVED = "verification_status_derived"
     DECISION_MADE = "decision_made"
     CREDIT_RESERVED = "credit_reserved"
     CREDIT_SETTLED = "credit_settled"
@@ -169,6 +171,19 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "authorization_request_id",
         "action_hash",
         "score_basis_points",
+        "evidence_score_version",
+        "evidence_count",
+        "independent_evidence_count",
+        "source_authority_component",
+        "extraction_quality_component",
+        "independence_component",
+        "corroboration_component",
+        "contradiction_component",
+        "freshness_component",
+        "coverage_component",
+        "final_score",
+        "evidence_ids_used",
+        "evidence_ids_excluded",
         "timeout_ms",
         "error_code",
         "ledger_account",

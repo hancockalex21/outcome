@@ -149,6 +149,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     provider_health_migration = importlib.import_module(
         "migrations.versions.20260914_0010_add_provider_health_metrics"
     )
+    verification_score_migration = importlib.import_module(
+        "migrations.versions.20260914_0011_add_verification_score_factors"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -164,6 +167,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         inert_evidence_migration.op = operations
         evidence_lineage_migration.op = operations
         provider_health_migration.op = operations
+        verification_score_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
@@ -175,6 +179,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         inert_evidence_migration.upgrade()
         evidence_lineage_migration.upgrade()
         provider_health_migration.upgrade()
+        verification_score_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -184,6 +189,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        verification_score_migration.downgrade()
         provider_health_migration.downgrade()
         evidence_lineage_migration.downgrade()
         inert_evidence_migration.downgrade()

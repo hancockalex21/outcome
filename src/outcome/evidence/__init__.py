@@ -24,9 +24,24 @@ from outcome.evidence.normalizer import (
     SourceClass,
     UnsafeSourceReference,
 )
+from outcome.evidence.scoring import (
+    EVIDENCE_SCORE_VERSION,
+    CrossTenantEvidenceScoringAccess,
+    EvidenceExclusionReason,
+    EvidenceScore,
+    EvidenceScoringConfig,
+    EvidenceScoringError,
+    EvidenceScoringReason,
+    EvidenceScoringService,
+    EvidenceStance,
+    EvidenceStanceInput,
+)
 
 __all__ = [
+    "EVIDENCE_SCORE_VERSION",
+    "CrossTenantEvidenceScoringAccess",
     "CrossTenantLineageAccess",
+    "EvidenceExclusionReason",
     "EvidenceGraphEdge",
     "EvidenceGraphNode",
     "EvidenceIndependenceRelationship",
@@ -43,6 +58,13 @@ __all__ = [
     "EvidenceNormalizationInput",
     "EvidenceNormalizer",
     "EvidenceRelationshipType",
+    "EvidenceScore",
+    "EvidenceScoringConfig",
+    "EvidenceScoringError",
+    "EvidenceScoringReason",
+    "EvidenceScoringService",
+    "EvidenceStance",
+    "EvidenceStanceInput",
     "ExtractionQuality",
     "InertEvidence",
     "SourceClass",

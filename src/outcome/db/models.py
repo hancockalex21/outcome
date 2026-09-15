@@ -372,6 +372,10 @@ class VerificationResult(AccountScopedMixin, Base):
     )
     status: Mapped[str] = mapped_column(String(64), nullable=False)
     evidence_score_basis_points: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    evidence_score_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    score_factors: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    evidence_ids_used: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    evidence_ids_excluded: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     assurance: Mapped[str] = mapped_column(String(64), nullable=False)
     reason_codes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
