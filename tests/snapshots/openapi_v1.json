@@ -344,7 +344,7 @@
       "PolicyDecision": {
         "enum": [
           "ALLOW",
-          "RETRY",
+          "RETRY_HIGHER_ASSURANCE",
           "ESCALATE",
           "BLOCK"
         ],

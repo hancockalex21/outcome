@@ -64,13 +64,19 @@ class AgentCredential(AccountScopedMixin, Base):
 
 class Policy(AccountScopedMixin, Base):
     __tablename__ = "policies"
-    __table_args__ = (Index("ix_policies_account_created_at", "account_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_policies_account_created_at", "account_id", "created_at"),
+        Index("ix_policies_account_version", "account_id", "version"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     body: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ProviderRight(AccountScopedMixin, Base):

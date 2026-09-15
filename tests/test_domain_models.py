@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
+import pytest
 from pydantic import BaseModel
 
 from outcome.domain import (
@@ -40,7 +41,12 @@ def test_domain_enum_values_are_stable() -> None:
             "SYSTEM_FAILURE",
         ],
     )
-    assert_stable_values(PolicyDecision, ["ALLOW", "RETRY", "ESCALATE", "BLOCK"])
+    assert_stable_values(
+        PolicyDecision,
+        ["ALLOW", "RETRY_HIGHER_ASSURANCE", "ESCALATE", "BLOCK"],
+    )
+    with pytest.raises(ValueError):
+        PolicyDecision("RETRY")
     assert_stable_values(VerificationMode, ["INLINE", "PARALLEL", "ASYNC"])
     assert_stable_values(AssuranceLevel, ["LOW", "STANDARD", "HIGH"])
     assert_stable_values(

@@ -214,7 +214,11 @@ def test_malformed_receipt_rejected() -> None:
 
 @pytest.mark.parametrize(
     "decision",
-    [PolicyDecision.BLOCK, PolicyDecision.RETRY, PolicyDecision.ESCALATE],
+    [
+        PolicyDecision.BLOCK,
+        PolicyDecision.RETRY_HIGHER_ASSURANCE,
+        PolicyDecision.ESCALATE,
+    ],
 )
 def test_non_allow_decisions_are_not_executable(decision: PolicyDecision) -> None:
     receipt = signed_receipt(policy_decision=decision)

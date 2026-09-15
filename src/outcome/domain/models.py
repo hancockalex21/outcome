@@ -13,7 +13,7 @@ class VerificationStatus(StrEnum):
 
 class PolicyDecision(StrEnum):
     ALLOW = "ALLOW"
-    RETRY = "RETRY"
+    RETRY_HIGHER_ASSURANCE = "RETRY_HIGHER_ASSURANCE"
     ESCALATE = "ESCALATE"
     BLOCK = "BLOCK"
 

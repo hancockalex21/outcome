@@ -38,6 +38,7 @@ EXPECTED_INDEXES = {
     "ix_agent_credentials_account_created_at",
     "ix_agent_credentials_key_prefix",
     "ix_policies_account_created_at",
+    "ix_policies_account_version",
     "ix_provider_rights_account_created_at",
     "ix_provider_rights_provider_capability",
     "ix_customer_provider_credentials_account_created_at",
@@ -156,6 +157,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     verification_orchestration_migration = importlib.import_module(
         "migrations.versions.20260915_0012_add_verification_orchestration_metadata"
     )
+    policy_hash_migration = importlib.import_module(
+        "migrations.versions.20260915_0013_add_policy_hash_metadata"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -173,6 +177,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         provider_health_migration.op = operations
         verification_score_migration.op = operations
         verification_orchestration_migration.op = operations
+        policy_hash_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
@@ -186,6 +191,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         provider_health_migration.upgrade()
         verification_score_migration.upgrade()
         verification_orchestration_migration.upgrade()
+        policy_hash_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -195,6 +201,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        policy_hash_migration.downgrade()
         verification_orchestration_migration.downgrade()
         verification_score_migration.downgrade()
         provider_health_migration.downgrade()

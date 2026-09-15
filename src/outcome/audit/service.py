@@ -15,6 +15,13 @@ class AuditEventType(StrEnum):
     ACCOUNT_FUNDED = "account_funded"
     REQUEST_ACCEPTED = "request_accepted"
     POLICY_SELECTED = "policy_selected"
+    POLICY_EVALUATION_STARTED = "policy_evaluation_started"
+    POLICY_RULE_MATCHED = "policy_rule_matched"
+    POLICY_DECISION_PRODUCED = "policy_decision_produced"
+    POLICY_BLOCKED_ACTION = "policy_blocked_action"
+    POLICY_HIGHER_ASSURANCE_REQUIRED = "policy_higher_assurance_required"
+    POLICY_ESCALATION_REQUIRED = "policy_escalation_required"
+    POLICY_INVALID_OR_DISABLED = "policy_invalid_or_disabled"
     PROVIDER_ATTEMPTED = "provider_attempted"
     EVIDENCE_NORMALIZATION_ACCEPTED = "evidence_normalization_accepted"
     EVIDENCE_NORMALIZATION_REJECTED = "evidence_normalization_rejected"
@@ -124,6 +131,13 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "event_type",
         "lifecycle_state",
         "request_config_version",
+        "policy_id",
+        "policy_version",
+        "policy_hash",
+        "matched_rule_ids",
+        "assurance_level",
+        "required_assurance",
+        "escalation_strategy",
         "provider_alias",
         "provider_health",
         "provider_id",
@@ -185,6 +199,7 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "capability",
         "provider_attempt_id",
         "verification_result_id",
+        "verification_request_id",
         "authorization_result_id",
         "authorization_request_id",
         "action_hash",

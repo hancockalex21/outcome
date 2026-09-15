@@ -226,7 +226,11 @@ def test_expired_receipt_does_not_consume() -> None:
 
 @pytest.mark.parametrize(
     "decision",
-    [PolicyDecision.BLOCK, PolicyDecision.RETRY, PolicyDecision.ESCALATE],
+    [
+        PolicyDecision.BLOCK,
+        PolicyDecision.RETRY_HIGHER_ASSURANCE,
+        PolicyDecision.ESCALATE,
+    ],
 )
 def test_non_allow_receipts_do_not_consume(decision: PolicyDecision) -> None:
     session = build_consumption_session()
