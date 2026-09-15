@@ -222,7 +222,13 @@ class AuthorizationRequest(AccountScopedMixin, Base):
     __tablename__ = "authorization_requests"
     __table_args__ = (
         Index("ix_authorization_requests_account_created_at", "account_id", "created_at"),
+        Index("ix_authorization_requests_idempotency", "account_id", "idempotency_key"),
         Index("ix_authorization_requests_request_id", "request_id"),
+        UniqueConstraint(
+            "account_id",
+            "idempotency_key",
+            name="uq_authorization_requests_account_idempotency",
+        ),
         UniqueConstraint("request_id", name="uq_authorization_requests_request_id"),
     )
 
@@ -234,6 +240,28 @@ class AuthorizationRequest(AccountScopedMixin, Base):
     material_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     ephemeral_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     requested_assurance: Mapped[str] = mapped_column(String(64), nullable=False)
+    action_schema_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    policy_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("policies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    policy_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    authorization_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lifecycle_state: Mapped[str] = mapped_column(String(64), nullable=False, default="RECEIVED")
+    request_config_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lifecycle_metadata: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EvidenceItem(AccountScopedMixin, Base):
@@ -408,6 +436,11 @@ class AuthorizationResult(AccountScopedMixin, Base):
     __table_args__ = (
         Index("ix_authorization_results_account_created_at", "account_id", "created_at"),
         Index("ix_authorization_results_request_id", "request_id"),
+        UniqueConstraint(
+            "account_id",
+            "authorization_request_id",
+            name="uq_authorization_results_account_request",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -421,6 +454,31 @@ class AuthorizationResult(AccountScopedMixin, Base):
     evidence_score_basis_points: Mapped[int | None] = mapped_column(Integer, nullable=True)
     assurance: Mapped[str] = mapped_column(String(64), nullable=False)
     reason_codes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    policy_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("policies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    policy_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    policy_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    action_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    action_schema_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    verification_result_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("verification_results.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    verification_request_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("verification_requests.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    receipt_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    authorization_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    provenance: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class Receipt(AccountScopedMixin, Base):

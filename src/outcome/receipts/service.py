@@ -34,6 +34,10 @@ class ReceiptMalformed(ReceiptError):
     pass
 
 
+class NonAllowReceiptProhibited(ReceiptError):
+    pass
+
+
 class CrossTenantReceiptAccess(PermissionError):
     pass
 
@@ -245,6 +249,10 @@ class ReceiptService:
         issued_at: datetime | None = None,
         receipt_id: UUID | None = None,
     ) -> SignedReceipt:
+        if policy_decision is not PolicyDecision.ALLOW:
+            raise NonAllowReceiptProhibited(
+                "executable authorization receipts may only be issued for ALLOW"
+            )
         issued = _verification_time(issued_at)
         payload = ReceiptPayload(
             receipt_version=RECEIPT_VERSION,

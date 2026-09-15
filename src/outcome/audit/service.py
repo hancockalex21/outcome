@@ -98,6 +98,16 @@ class AuditEventType(StrEnum):
     VERIFICATION_FAILED = "verification_failed"
     VERIFICATION_IDEMPOTENT_REPLAY = "verification_idempotent_replay"
     VERIFICATION_IDEMPOTENCY_CONFLICT = "verification_idempotency_conflict"
+    AUTHORIZATION_RECEIVED = "authorization_received"
+    AUTHORIZATION_VALIDATED = "authorization_validated"
+    AUTHORIZATION_VERIFICATION_COMPLETED = "authorization_verification_completed"
+    AUTHORIZATION_POLICY_EVALUATED = "authorization_policy_evaluated"
+    AUTHORIZATION_DECISION_PRODUCED = "authorization_decision_produced"
+    AUTHORIZATION_RECEIPT_ISSUED = "authorization_receipt_issued"
+    AUTHORIZATION_COMPLETED = "authorization_completed"
+    AUTHORIZATION_FAILED = "authorization_failed"
+    AUTHORIZATION_IDEMPOTENT_REPLAY = "authorization_idempotent_replay"
+    AUTHORIZATION_IDEMPOTENCY_CONFLICT = "authorization_idempotency_conflict"
 
 
 class AuditPayloadRejected(ValueError):
@@ -203,6 +213,8 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "authorization_result_id",
         "authorization_request_id",
         "action_hash",
+        "material_hash",
+        "authorization_lifetime_seconds",
         "score_basis_points",
         "evidence_score_version",
         "evidence_count",
