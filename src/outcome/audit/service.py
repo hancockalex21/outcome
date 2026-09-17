@@ -106,6 +106,12 @@ class AuditEventType(StrEnum):
     PROVIDER_ATTEMPT_TIMED_OUT = "provider_attempt_timed_out"
     PROVIDER_ATTEMPT_FAILED = "provider_attempt_failed"
     PROVIDER_ATTEMPT_RATE_LIMITED = "provider_attempt_rate_limited"
+    PROVIDER_EXECUTION_PREPARED = "provider_execution_prepared"
+    PROVIDER_EXECUTION_STARTED = "provider_execution_started"
+    PROVIDER_SECRET_REFERENCE_VALIDATED = "provider_secret_reference_validated"
+    PROVIDER_EXECUTION_SUCCEEDED = "provider_execution_succeeded"
+    PROVIDER_EXECUTION_FAILED = "provider_execution_failed"
+    PROVIDER_EXECUTION_REJECTED = "provider_execution_rejected"
     AUTHORIZATION_RECEIVED = "authorization_received"
     AUTHORIZATION_VALIDATED = "authorization_validated"
     AUTHORIZATION_VERIFICATION_COMPLETED = "authorization_verification_completed"
@@ -214,7 +220,9 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "billing_reservation_id",
         "available_micro_usd",
         "billing_mode",
+        "execution_mode",
         "capability",
+        "credential_ref_hash",
         "provider_attempt_id",
         "provider_outcome",
         "planned_provider_ids",
@@ -224,6 +232,7 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "deadline_exceeded",
         "health_effect",
         "execution_plan_version",
+        "transport_version",
         "max_providers",
         "max_concurrency",
         "overall_deadline_ms",
