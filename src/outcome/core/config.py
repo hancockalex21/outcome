@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     database_url: str = Field(default="postgresql+asyncpg://outcome@localhost:5432/outcome")
+    mcp_database_url: str = "sqlite:///outcome-mcp-local.db"
+    mcp_receipt_signing_key_id: str = "outcome-mcp-dev-key"
+    mcp_receipt_private_key_b64: str = ""
     redis_url: str = "redis://localhost:6379/0"
     otel_service_name: str = "outcome-api"
     otel_exporter_otlp_endpoint: str = ""

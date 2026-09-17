@@ -137,6 +137,9 @@ class AuditEventType(StrEnum):
     AUTHORIZATION_FAILED = "authorization_failed"
     AUTHORIZATION_IDEMPOTENT_REPLAY = "authorization_idempotent_replay"
     AUTHORIZATION_IDEMPOTENCY_CONFLICT = "authorization_idempotency_conflict"
+    MCP_TOOL_INVOKED = "mcp_tool_invoked"
+    MCP_TOOL_COMPLETED = "mcp_tool_completed"
+    MCP_TOOL_REJECTED = "mcp_tool_rejected"
 
 
 class AuditPayloadRejected(ValueError):
@@ -294,6 +297,9 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "signing_key_id",
         "timestamp",
         "transaction_type",
+        "duration_ms",
+        "mcp_tool_name",
+        "mcp_tool_version",
     }
 )
 

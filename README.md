@@ -39,6 +39,19 @@ Start the API:
 make dev
 ```
 
+Start the local MCP server over stdio:
+
+```sh
+make mcp
+```
+
+The MCP server exposes `outcome_verify`, `outcome_authorize`, and
+`outcome_capabilities`. Tool calls authenticate with existing Outcome agent API keys
+using `Authorization: Bearer oc_agent_*` in each tool request envelope. The local
+stdio server is an adapter over the same Outcome application services; it does not
+expose provider execution, secret resolution, ledger mutation, receipt signing, or
+arbitrary HTTP/file/code tools.
+
 Check health:
 
 ```sh
@@ -60,6 +73,7 @@ make typecheck
 make test
 make migrate
 make dev
+make mcp
 ```
 
 ## Local Services

@@ -1,0 +1,53 @@
+{
+  "service_name": "Outcome",
+  "service_version": "0.1.0",
+  "mcp_adapter_version": "outcome-mcp-v1",
+  "supported_interfaces": ["mcp-stdio"],
+  "supported_tools": ["outcome_verify", "outcome_authorize"],
+  "optional_tools": ["outcome_capabilities"],
+  "authentication": {
+    "required": true,
+    "scheme": "Authorization: Bearer oc_agent_*",
+    "scopes": {
+      "outcome_verify": "verify:write",
+      "outcome_authorize": "authorize:write"
+    }
+  },
+  "verification_modes": ["INLINE", "PARALLEL", "ASYNC"],
+  "assurance_levels": ["LOW", "STANDARD", "HIGH"],
+  "policy_decisions": ["ALLOW", "RETRY_HIGHER_ASSURANCE", "ESCALATE", "BLOCK"],
+  "schemas": {
+    "action_schema_version": "action.material.v1",
+    "mcp_tool_version": "outcome-mcp-v1",
+    "verification_request_schema_version": "verification.request.v1",
+    "authorization_request_schema_version": "authorization.request.v1"
+  },
+  "receipt_support": {
+    "signed_authorization_receipts": true,
+    "allow_only": true,
+    "private_signing_keys_exposed": false
+  },
+  "billing": {
+    "model": "prepaid",
+    "currency": "USD",
+    "internal_unit": "micro_usd",
+    "source_of_truth": "Postgres double-entry ledger",
+    "redis_role": "temporary reservation layer"
+  },
+  "evidence_score": {
+    "scale": "0-10000",
+    "meaning": "deterministic evidence-strength score",
+    "not_a_probability": true
+  },
+  "not_supported": [
+    "x402",
+    "MPP",
+    "autonomous payment negotiation",
+    "production provider integrations",
+    "refunds",
+    "postpaid billing",
+    "arbitrary web browsing",
+    "arbitrary execution",
+    "generic HTTP proxying"
+  ]
+}
