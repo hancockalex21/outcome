@@ -26,9 +26,12 @@ class CircuitState(StrEnum):
 
 class ProviderAttemptOutcome(StrEnum):
     SUCCESS = "SUCCESS"
+    TIMEOUT = "TIMEOUT"
     PROVIDER_FAILURE = "PROVIDER_FAILURE"
-    PROVIDER_TIMEOUT = "PROVIDER_TIMEOUT"
     RATE_LIMITED = "RATE_LIMITED"
+    CIRCUIT_OPEN = "CIRCUIT_OPEN"
+    DISABLED = "DISABLED"
+    CANCELLED_BY_DEADLINE = "CANCELLED_BY_DEADLINE"
     SYSTEM_FAILURE = "SYSTEM_FAILURE"
 
 
@@ -239,10 +242,17 @@ class ProviderHealthService:
                 metric.current_health = ProviderHealth.HEALTHY.value
         elif outcome is ProviderAttemptOutcome.SYSTEM_FAILURE:
             metric.system_failure_count += 1
+        elif outcome is ProviderAttemptOutcome.CANCELLED_BY_DEADLINE:
+            metric.timeout_count += 1
+        elif outcome in {
+            ProviderAttemptOutcome.CIRCUIT_OPEN,
+            ProviderAttemptOutcome.DISABLED,
+        }:
+            pass
         else:
             metric.failure_count += 1
             metric.consecutive_failures += 1
-            if outcome is ProviderAttemptOutcome.PROVIDER_TIMEOUT:
+            if outcome is ProviderAttemptOutcome.TIMEOUT:
                 metric.timeout_count += 1
             if outcome is ProviderAttemptOutcome.RATE_LIMITED:
                 metric.rate_limited_count += 1

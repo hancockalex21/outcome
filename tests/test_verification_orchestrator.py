@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
 from uuid import UUID, uuid4
@@ -13,7 +14,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from outcome.audit import AuditService
 from outcome.db.metadata import metadata
-from outcome.db.models import Account, AuditEvent, EvidenceItem, Provider, VerificationResult
+from outcome.db.models import (
+    Account,
+    AuditEvent,
+    EvidenceItem,
+    Provider,
+    ProviderAttempt,
+    ProviderMetric,
+    VerificationResult,
+)
 from outcome.domain import AssuranceLevel, ProviderHealth, VerificationMode, VerificationStatus
 from outcome.evidence import EvidenceStance, SourceClass
 from outcome.pricing import BillingMode, CapabilityName
@@ -27,6 +36,7 @@ from outcome.providers import (
 from outcome.verification import (
     AuthenticatedVerificationContext,
     EvidenceProviderRequest,
+    ProviderCollectionConfig,
     ProviderEvidencePayload,
     ProviderEvidenceResult,
     ProviderPlan,
@@ -72,6 +82,44 @@ class SharedCountingProvider:
         with self.lock:
             self.calls += 1
         return self.result
+
+
+class AsyncDelayedProvider:
+    active = 0
+    max_active = 0
+    lock = asyncio.Lock()
+
+    def __init__(
+        self,
+        result: ProviderEvidenceResult,
+        *,
+        delay_seconds: float,
+    ) -> None:
+        self.result = result
+        self.delay_seconds = delay_seconds
+        self.calls = 0
+        self.cancelled = False
+
+    @classmethod
+    def reset_counters(cls) -> None:
+        cls.active = 0
+        cls.max_active = 0
+        cls.lock = asyncio.Lock()
+
+    async def collect(self, request: EvidenceProviderRequest) -> ProviderEvidenceResult:
+        self.calls += 1
+        async with self.lock:
+            type(self).active += 1
+            type(self).max_active = max(type(self).max_active, type(self).active)
+        try:
+            await asyncio.sleep(self.delay_seconds)
+            return self.result
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        finally:
+            async with self.lock:
+                type(self).active -= 1
 
 
 def payload(
@@ -158,8 +206,41 @@ def orchestrator(session: Session) -> VerificationOrchestrator:
     )
 
 
+def async_orchestrator(
+    session: Session,
+    *,
+    config: ProviderCollectionConfig,
+) -> VerificationOrchestrator:
+    return VerificationOrchestrator(
+        session,
+        scoring_service=None,
+        provider_health_service=ProviderHealthService(
+            session,
+            AuditService(session),
+            config=ProviderHealthConfig(failure_threshold=2, timeout_threshold=2),
+            clock=lambda: NOW,
+        ),
+        collection_config=config,
+        clock=lambda: NOW,
+    )
+
+
 def add_active_right(session: Session, *, provider_id: UUID = PROVIDER_ID) -> None:
     add_right(session, provider_id=provider_id, expires_at=NOW.replace(day=16))
+
+
+def add_provider_with_right(session: Session, *, provider_id: UUID, name: str) -> None:
+    session.add(
+        Provider(
+            id=provider_id,
+            account_id=ACCOUNT_ID,
+            name=name,
+            health=ProviderHealth.HEALTHY.value,
+            config={},
+        )
+    )
+    session.commit()
+    add_active_right(session, provider_id=provider_id)
 
 
 def test_successful_end_to_end_internal_verification() -> None:
@@ -284,7 +365,7 @@ def test_provider_timeout_with_no_usable_evidence_produces_provider_failed() -> 
     session = setup_session()
     add_active_right(session)
     adapter = FakeProvider(
-        provider_result(outcome=ProviderAttemptOutcome.PROVIDER_TIMEOUT, evidence=())
+        provider_result(outcome=ProviderAttemptOutcome.TIMEOUT, evidence=())
     )
 
     result = orchestrator(session).verify(envelope(), providers=(plan(adapter),))
@@ -326,7 +407,7 @@ def test_partial_provider_failure_does_not_poison_sufficient_evidence() -> None:
     )
     add_active_right(session, provider_id=second_provider_id)
     failed = FakeProvider(
-        provider_result(outcome=ProviderAttemptOutcome.PROVIDER_TIMEOUT, evidence=())
+        provider_result(outcome=ProviderAttemptOutcome.TIMEOUT, evidence=())
     )
     good = FakeProvider(provider_result(provider_id=second_provider_id))
 
@@ -343,6 +424,329 @@ def test_partial_provider_failure_does_not_poison_sufficient_evidence() -> None:
     assert result.status is VerificationStatus.VERIFIED
     assert PROVIDER_ID in result.providers_failed
     assert second_provider_id in result.providers_contributed
+
+
+def test_two_successful_providers_execute_concurrently_with_stable_plan_order() -> None:
+    session = setup_session()
+    add_active_right(session)
+    second_provider_id = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+    add_provider_with_right(session, provider_id=second_provider_id, name="Second")
+    AsyncDelayedProvider.reset_counters()
+    slow_first = AsyncDelayedProvider(
+        provider_result(
+            provider_id=PROVIDER_ID,
+            evidence=(payload(body="alpha", source_uri="https://alpha.example"),),
+        ),
+        delay_seconds=0.05,
+    )
+    fast_second = AsyncDelayedProvider(
+        provider_result(
+            provider_id=second_provider_id,
+            evidence=(payload(body="beta", source_uri="https://beta.example"),),
+        ),
+        delay_seconds=0.01,
+    )
+
+    result = async_orchestrator(
+        session,
+        config=ProviderCollectionConfig(max_providers=4, max_concurrency=2),
+    ).verify(
+        VerificationRequestEnvelope(
+            authenticated=AuthenticatedVerificationContext(ACCOUNT_ID, AGENT_ID),
+            material=material(provider_ids=(PROVIDER_ID, second_provider_id)),
+            idempotency_key="async-two",
+            correlation_id=uuid4(),
+        ),
+        providers=(plan(slow_first), plan(fast_second, provider_id=second_provider_id)),
+    )
+    attempts = session.scalars(
+        select(ProviderAttempt).order_by(ProviderAttempt.planned_order)
+    ).all()
+
+    assert result.status is VerificationStatus.VERIFIED
+    assert AsyncDelayedProvider.max_active == 2
+    assert [attempt.provider_id for attempt in attempts] == sorted(
+        [PROVIDER_ID, second_provider_id],
+        key=str,
+    )
+    assert all(attempt.status == ProviderAttemptOutcome.SUCCESS.value for attempt in attempts)
+
+
+def test_configured_concurrency_limit_enforced() -> None:
+    session = setup_session()
+    add_active_right(session)
+    provider_ids = [
+        PROVIDER_ID,
+        UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+        UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+    ]
+    for index, provider_id in enumerate(provider_ids[1:], start=2):
+        add_provider_with_right(session, provider_id=provider_id, name=f"Provider {index}")
+    AsyncDelayedProvider.reset_counters()
+    adapters = [
+        AsyncDelayedProvider(
+            provider_result(provider_id=provider_id),
+            delay_seconds=0.03,
+        )
+        for provider_id in provider_ids
+    ]
+
+    async_orchestrator(
+        session,
+        config=ProviderCollectionConfig(max_providers=3, max_concurrency=1),
+    ).verify(
+        VerificationRequestEnvelope(
+            authenticated=AuthenticatedVerificationContext(ACCOUNT_ID, AGENT_ID),
+            material=material(provider_ids=tuple(provider_ids)),
+            idempotency_key="async-limit",
+            correlation_id=uuid4(),
+        ),
+        providers=tuple(
+            plan(adapter, provider_id=provider_id)
+            for adapter, provider_id in zip(adapters, provider_ids, strict=True)
+        ),
+    )
+
+    assert AsyncDelayedProvider.max_active == 1
+
+
+def test_max_provider_count_enforced() -> None:
+    session = setup_session()
+    add_active_right(session)
+    second_provider_id = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+    add_provider_with_right(session, provider_id=second_provider_id, name="Second")
+    first = FakeProvider(provider_result(provider_id=PROVIDER_ID))
+    second = FakeProvider(provider_result(provider_id=second_provider_id))
+
+    result = async_orchestrator(
+        session,
+        config=ProviderCollectionConfig(max_providers=1, max_concurrency=1),
+    ).verify(
+        VerificationRequestEnvelope(
+            authenticated=AuthenticatedVerificationContext(ACCOUNT_ID, AGENT_ID),
+            material=material(provider_ids=(PROVIDER_ID, second_provider_id)),
+            idempotency_key="max-provider",
+            correlation_id=uuid4(),
+        ),
+        providers=(plan(first), plan(second, provider_id=second_provider_id)),
+    )
+
+    assert result.status is VerificationStatus.VERIFIED
+    assert first.calls + second.calls == 1
+
+
+def test_per_provider_timeout_and_overall_deadline_cancel_safely() -> None:
+    session = setup_session()
+    add_active_right(session)
+    timeout_adapter = AsyncDelayedProvider(provider_result(), delay_seconds=0.1)
+
+    timeout_result = async_orchestrator(
+        session,
+        config=ProviderCollectionConfig(
+            max_providers=1,
+            max_concurrency=1,
+            per_provider_timeout=timedelta(milliseconds=20),
+            overall_deadline=timedelta(milliseconds=200),
+        ),
+    ).verify(envelope(idempotency_key="per-timeout"), providers=(plan(timeout_adapter),))
+    metric = session.scalar(select(ProviderMetric).where(ProviderMetric.provider_id == PROVIDER_ID))
+
+    assert timeout_result.status is VerificationStatus.PROVIDER_FAILED
+    assert metric is not None
+    assert metric.timeout_count == 1
+
+    deadline_adapter = AsyncDelayedProvider(provider_result(), delay_seconds=0.2)
+    deadline_result = async_orchestrator(
+        session,
+        config=ProviderCollectionConfig(
+            max_providers=1,
+            max_concurrency=1,
+            per_provider_timeout=timedelta(seconds=1),
+            overall_deadline=timedelta(milliseconds=20),
+        ),
+    ).verify(envelope(idempotency_key="overall-deadline"), providers=(plan(deadline_adapter),))
+    attempts = session.scalars(
+        select(ProviderAttempt).where(ProviderAttempt.deadline_exceeded.is_(True))
+    ).all()
+
+    assert deadline_result.status is VerificationStatus.PROVIDER_FAILED
+    assert deadline_adapter.cancelled is True
+    assert attempts
+    assert attempts[0].status == ProviderAttemptOutcome.CANCELLED_BY_DEADLINE.value
+    assert attempts[0].health_effect == "NO_HEALTH_EFFECT"
+
+
+def test_partial_success_with_timeout_failure_and_rate_limit_is_deterministic() -> None:
+    session = setup_session()
+    add_active_right(session)
+    provider_ids = [
+        PROVIDER_ID,
+        UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+        UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+    ]
+    for index, provider_id in enumerate(provider_ids[1:], start=2):
+        add_provider_with_right(session, provider_id=provider_id, name=f"Provider {index}")
+    success = AsyncDelayedProvider(
+        provider_result(
+            provider_id=provider_ids[0],
+            evidence=(payload(body="success", source_uri="https://success.example"),),
+        ),
+        delay_seconds=0.03,
+    )
+    failure = AsyncDelayedProvider(
+        provider_result(
+            provider_id=provider_ids[1],
+            outcome=ProviderAttemptOutcome.PROVIDER_FAILURE,
+            evidence=(),
+        ),
+        delay_seconds=0.01,
+    )
+    limited = AsyncDelayedProvider(
+        provider_result(
+            provider_id=provider_ids[2],
+            outcome=ProviderAttemptOutcome.RATE_LIMITED,
+            evidence=(),
+        ),
+        delay_seconds=0.02,
+    )
+
+    result = async_orchestrator(
+        session,
+        config=ProviderCollectionConfig(max_providers=3, max_concurrency=3),
+    ).verify(
+        VerificationRequestEnvelope(
+            authenticated=AuthenticatedVerificationContext(ACCOUNT_ID, AGENT_ID),
+            material=material(provider_ids=tuple(provider_ids)),
+            idempotency_key="partial-async",
+            correlation_id=uuid4(),
+        ),
+        providers=tuple(
+            plan(adapter, provider_id=provider_id)
+            for adapter, provider_id in zip(
+                (success, failure, limited),
+                provider_ids,
+                strict=True,
+            )
+        ),
+    )
+    attempt_statuses = {
+        attempt.provider_id: attempt.status for attempt in session.scalars(select(ProviderAttempt))
+    }
+
+    assert result.status is VerificationStatus.VERIFIED
+    assert result.providers_contributed == (provider_ids[0],)
+    assert provider_ids[1] in result.providers_failed
+    assert provider_ids[2] in result.providers_failed
+    assert attempt_statuses[provider_ids[1]] == ProviderAttemptOutcome.PROVIDER_FAILURE.value
+    assert attempt_statuses[provider_ids[2]] == ProviderAttemptOutcome.RATE_LIMITED.value
+
+
+def test_completion_order_does_not_change_semantic_result() -> None:
+    provider_a = PROVIDER_ID
+    provider_b = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+
+    def run(delays: tuple[float, float], key: str):
+        session = setup_session()
+        add_active_right(session)
+        add_provider_with_right(session, provider_id=provider_b, name="Second")
+        first = AsyncDelayedProvider(
+            provider_result(
+                provider_id=provider_a,
+                evidence=(payload(body="alpha", source_uri="https://alpha.example"),),
+            ),
+            delay_seconds=delays[0],
+        )
+        second = AsyncDelayedProvider(
+            provider_result(
+                provider_id=provider_b,
+                evidence=(payload(body="beta", source_uri="https://beta.example"),),
+            ),
+            delay_seconds=delays[1],
+        )
+        result = async_orchestrator(
+            session,
+            config=ProviderCollectionConfig(max_providers=2, max_concurrency=2),
+        ).verify(
+            VerificationRequestEnvelope(
+                authenticated=AuthenticatedVerificationContext(ACCOUNT_ID, AGENT_ID),
+                material=material(provider_ids=(provider_a, provider_b)),
+                idempotency_key=key,
+                correlation_id=uuid4(),
+            ),
+            providers=(plan(first), plan(second, provider_id=provider_b)),
+        )
+        persisted_evidence = session.scalars(
+            select(EvidenceItem).order_by(EvidenceItem.created_at, EvidenceItem.evidence_hash)
+        ).all()
+        return (
+            result.status,
+            result.evidence_score.final_score if result.evidence_score else None,
+            result.reason_codes,
+            tuple(item.normalized_text for item in persisted_evidence),
+            result.lineage_versions,
+        )
+
+    first_run = run((0.05, 0.01), "order-a")
+    second_run = run((0.01, 0.05), "order-b")
+
+    assert first_run == second_run
+
+
+def test_circuit_open_and_disabled_provider_never_execute() -> None:
+    session = setup_session(provider_health=ProviderHealth.HEALTHY)
+    add_active_right(session)
+    ProviderHealthService(
+        session,
+        AuditService(session),
+        config=ProviderHealthConfig(failure_threshold=1),
+        clock=lambda: NOW,
+    ).record_attempt(
+        account_id=ACCOUNT_ID,
+        provider_id=PROVIDER_ID,
+        capability=CapabilityName.VERIFY,
+        outcome=ProviderAttemptOutcome.PROVIDER_FAILURE,
+        correlation_id=uuid4(),
+    )
+    adapter = FakeProvider(provider_result())
+
+    result = async_orchestrator(
+        session,
+        config=ProviderCollectionConfig(max_providers=1, max_concurrency=1),
+    ).verify(envelope(idempotency_key="circuit-open"), providers=(plan(adapter),))
+
+    assert result.status is VerificationStatus.PROVIDER_FAILED
+    assert adapter.calls == 0
+    assert session.scalar(select(ProviderAttempt)).attempt_number == 0
+
+    disabled_provider_id = UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+    add_provider_with_right(session, provider_id=disabled_provider_id, name="Disabled")
+    ProviderHealthService(
+        session,
+        AuditService(session),
+        config=ProviderHealthConfig(failure_threshold=1),
+        clock=lambda: NOW,
+    ).manual_disable(
+        account_id=ACCOUNT_ID,
+        provider_id=disabled_provider_id,
+        capability=CapabilityName.VERIFY,
+        correlation_id=uuid4(),
+    )
+    disabled_adapter = FakeProvider(provider_result(provider_id=disabled_provider_id))
+    disabled = async_orchestrator(
+        session,
+        config=ProviderCollectionConfig(max_providers=1, max_concurrency=1),
+    ).verify(
+        VerificationRequestEnvelope(
+            authenticated=AuthenticatedVerificationContext(ACCOUNT_ID, AGENT_ID),
+            material=material(provider_ids=(disabled_provider_id,)),
+            idempotency_key="disabled",
+            correlation_id=uuid4(),
+        ),
+        providers=(plan(disabled_adapter, provider_id=disabled_provider_id),),
+    )
+
+    assert disabled.status is VerificationStatus.PROVIDER_FAILED
+    assert disabled_adapter.calls == 0
 
 
 def test_attempt_updates_health_for_provider_attributable_failure() -> None:
@@ -378,6 +782,9 @@ def test_idempotent_replay_does_not_execute_provider_twice() -> None:
     assert second.idempotent_replay is True
     assert second.verification_result_id == first.verification_result_id
     assert adapter.calls == 1
+    assert len(session.scalars(select(ProviderAttempt)).all()) == 1
+    assert len(session.scalars(select(EvidenceItem)).all()) == 1
+    assert len(session.scalars(select(VerificationResult)).all()) == 1
 
 
 def test_conflicting_request_under_same_idempotency_key_rejected() -> None:

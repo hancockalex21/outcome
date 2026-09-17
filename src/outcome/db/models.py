@@ -405,6 +405,16 @@ class ProviderAttempt(AccountScopedMixin, Base):
     provider_health: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(64), nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    capability: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    attempt_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    planned_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    timeout_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deadline_exceeded: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    health_effect: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    attempt_metadata: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class VerificationResult(AccountScopedMixin, Base):

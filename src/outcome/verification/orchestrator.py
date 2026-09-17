@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import inspect
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID, uuid4
@@ -14,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from outcome.actions.material import CanonicalizationError, canonical_material_json
 from outcome.audit import AuditEventType, AuditService
-from outcome.db.models import VerificationRequest, VerificationResult
+from outcome.db.models import ProviderAttempt, VerificationRequest, VerificationResult
 from outcome.domain import AssuranceLevel, VerificationMode, VerificationStatus
 from outcome.evidence import (
     EvidenceLineageInput,
@@ -44,6 +47,7 @@ from outcome.providers import (
 
 VERIFICATION_REQUEST_SCHEMA_VERSION = "verification.request.v1"
 VERIFICATION_ORCHESTRATION_VERSION = "verification-orchestration-v1"
+VERIFICATION_EXECUTION_PLAN_VERSION = "verification-provider-plan-v1"
 
 
 class VerificationLifecyclePhase(StrEnum):
@@ -71,6 +75,8 @@ class VerificationOrchestrationReason(StrEnum):
     VERIFIED = "VERIFIED"
     CONTRADICTED = "CONTRADICTED"
     INCONCLUSIVE = "INCONCLUSIVE"
+    COLLECTION_DEADLINE_REACHED = "COLLECTION_DEADLINE_REACHED"
+    CONFIGURATION_UNSAFE = "CONFIGURATION_UNSAFE"
 
 
 class VerificationOrchestrationError(ValueError):
@@ -154,6 +160,11 @@ class EvidenceProvider(Protocol):
         raise NotImplementedError
 
 
+class AsyncEvidenceProvider(Protocol):
+    async def collect(self, request: EvidenceProviderRequest) -> ProviderEvidenceResult:
+        raise NotImplementedError
+
+
 @dataclass(frozen=True)
 class ProviderPlan:
     provider_id: UUID
@@ -166,6 +177,46 @@ class ProviderPlan:
     requested_execution_mode: ProviderExecutionMode = ProviderExecutionMode.INLINE
     evidence_retention_requested: bool = False
     caching_requested: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderCollectionConfig:
+    max_providers: int = 8
+    max_concurrency: int = 4
+    per_provider_timeout: timedelta = timedelta(seconds=5)
+    overall_deadline: timedelta = timedelta(seconds=15)
+    max_attempts_per_provider: int = 1
+
+
+@dataclass(frozen=True)
+class PlannedProviderCollection:
+    provider_id: UUID
+    provider_alias: str
+    capability: CapabilityName
+    rights_version: str | None
+    planned_order: int
+    timeout_ms: int
+    execution_mode: ProviderExecutionMode
+    billing_mode: BillingMode
+    config_version: str = VERIFICATION_EXECUTION_PLAN_VERSION
+
+
+@dataclass(frozen=True)
+class ProviderExecutionPlanItem:
+    provider: ProviderPlan
+    plan: PlannedProviderCollection
+
+
+@dataclass(frozen=True)
+class ProviderCollectionOutcome:
+    plan: PlannedProviderCollection
+    attempt_outcome: ProviderAttemptOutcome
+    evidence: tuple[ProviderEvidencePayload, ...]
+    latency_ms: int | None
+    started_at: datetime
+    completed_at: datetime
+    deadline_exceeded: bool = False
+    error_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -198,6 +249,7 @@ class VerificationOrchestrator:
         evidence_normalizer: EvidenceNormalizer | None = None,
         lineage_service: EvidenceLineageService | None = None,
         scoring_service: EvidenceScoringService | None = None,
+        collection_config: ProviderCollectionConfig | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.session = session
@@ -223,9 +275,19 @@ class VerificationOrchestrator:
             self.audit_service,
             lineage_service=self.lineage_service,
         )
+        self.collection_config = collection_config or ProviderCollectionConfig()
+        _validate_collection_config(self.collection_config)
         self.clock = clock or (lambda: datetime.now(UTC))
 
     def verify(
+        self,
+        request: VerificationRequestEnvelope,
+        *,
+        providers: tuple[ProviderPlan, ...],
+    ) -> VerificationOrchestrationResult:
+        return asyncio.run(self.verify_async(request, providers=providers))
+
+    async def verify_async(
         self,
         request: VerificationRequestEnvelope,
         *,
@@ -266,117 +328,60 @@ class VerificationOrchestrator:
         providers_failed: list[UUID] = []
         lineage_versions: set[str] = set()
 
-        for provider in providers:
-            self._transition(
-                stored,
-                VerificationLifecyclePhase.PROVIDER_ELIGIBILITY,
-                request.correlation_id,
-                [VerificationLifecyclePhase.PROVIDER_ELIGIBILITY.value],
-            )
-            rights = self.provider_rights_service.authorize(
-                ProviderRightsRequest(
-                    account_id=request.authenticated.account_id,
-                    provider_id=provider.provider_id,
-                    provider_alias=provider.provider_alias,
-                    capability=request.material.capability,
-                    billing_mode=provider.billing_mode,
-                    requested_region=provider.requested_region,
-                    requested_data_use=provider.requested_data_use,
-                    requested_execution_mode=provider.requested_execution_mode,
-                    credential_mode=provider.credential_mode,
-                    evidence_retention_requested=provider.evidence_retention_requested,
-                    caching_requested=provider.caching_requested,
-                    evaluated_at=now,
-                ),
-                correlation_id=request.correlation_id,
-            )
-            if not rights.allowed:
-                providers_failed.append(provider.provider_id)
-                self._audit(
-                    stored,
-                    AuditEventType.VERIFICATION_PROVIDER_ELIGIBILITY_EVALUATED,
-                    request.correlation_id,
-                    [VerificationOrchestrationReason.PROVIDER_RIGHTS_UNAVAILABLE.value],
-                    provider_id=provider.provider_id,
-                )
-                continue
-            health = self.provider_health_service.evaluate(
-                ProviderHealthRequest(
-                    account_id=request.authenticated.account_id,
-                    provider_id=provider.provider_id,
-                    capability=request.material.capability,
-                    evaluated_at=now,
-                ),
-                correlation_id=request.correlation_id,
-            )
-            if not health.usable:
-                providers_failed.append(provider.provider_id)
-                self._audit(
-                    stored,
-                    AuditEventType.VERIFICATION_PROVIDER_ELIGIBILITY_EVALUATED,
-                    request.correlation_id,
-                    [VerificationOrchestrationReason.PROVIDER_HEALTH_UNSAFE.value],
-                    provider_id=provider.provider_id,
-                )
-                continue
-
+        plan_items, ineligible = self._build_execution_plan(
+            stored=stored,
+            request=request,
+            providers=providers,
+            now=now,
+        )
+        providers_failed.extend(provider_id for provider_id, _reason in ineligible)
+        if plan_items:
             self._transition(
                 stored,
                 VerificationLifecyclePhase.EVIDENCE_COLLECTION,
                 request.correlation_id,
                 [VerificationLifecyclePhase.EVIDENCE_COLLECTION.value],
             )
-            self._audit(
-                stored,
-                AuditEventType.VERIFICATION_PROVIDER_ATTEMPT_STARTED,
-                request.correlation_id,
-                [AuditEventType.PROVIDER_ATTEMPTED.value.upper()],
-                provider_id=provider.provider_id,
+            outcomes = await self._collect_provider_outcomes(
+                stored=stored,
+                request=request,
+                planned=plan_items,
             )
-            try:
-                provider_result = provider.adapter.collect(
-                    EvidenceProviderRequest(
-                        account_id=request.authenticated.account_id,
-                        verification_request_id=stored.id,
-                        provider_id=provider.provider_id,
-                        capability=request.material.capability,
-                        mode=request.material.mode,
-                        assurance=request.material.assurance,
-                    )
-                )
-            except Exception:
-                providers_failed.append(provider.provider_id)
-                self.provider_health_service.record_attempt(
-                    account_id=request.authenticated.account_id,
-                    provider_id=provider.provider_id,
-                    capability=request.material.capability,
-                    outcome=ProviderAttemptOutcome.SYSTEM_FAILURE,
-                    correlation_id=request.correlation_id,
-                )
-                return self._system_failure(stored, fingerprint, request.correlation_id)
+        else:
+            outcomes = ()
 
+        for outcome in outcomes:
             self.provider_health_service.record_attempt(
                 account_id=request.authenticated.account_id,
-                provider_id=provider.provider_id,
+                provider_id=outcome.plan.provider_id,
                 capability=request.material.capability,
-                outcome=provider_result.attempt_outcome,
+                outcome=outcome.attempt_outcome,
                 correlation_id=request.correlation_id,
-                latency_ms=provider_result.latency_ms,
+                latency_ms=outcome.latency_ms,
+                occurred_at=outcome.completed_at,
             )
-            self._audit(
-                stored,
-                AuditEventType.VERIFICATION_PROVIDER_ATTEMPT_COMPLETED,
-                request.correlation_id,
-                [provider_result.attempt_outcome.value],
-                provider_id=provider.provider_id,
+            self._persist_provider_attempt(
+                stored=stored,
+                outcome=outcome,
+                correlation_id=request.correlation_id,
             )
-            if provider_result.attempt_outcome is not ProviderAttemptOutcome.SUCCESS:
-                providers_failed.append(provider.provider_id)
+            if outcome.attempt_outcome is ProviderAttemptOutcome.SYSTEM_FAILURE:
+                return self._system_failure(stored, fingerprint, request.correlation_id)
+            if outcome.attempt_outcome is not ProviderAttemptOutcome.SUCCESS:
+                providers_failed.append(outcome.plan.provider_id)
                 continue
-
+            provider_plan = _provider_plan_for_outcome(providers, outcome)
+            provider_result = ProviderEvidenceResult(
+                provider_id=outcome.plan.provider_id,
+                provider_alias=outcome.plan.provider_alias,
+                capability=outcome.plan.capability,
+                attempt_outcome=outcome.attempt_outcome,
+                latency_ms=outcome.latency_ms,
+                evidence=outcome.evidence,
+            )
             provider_accepted = self._normalize_and_lineage(
                 stored=stored,
-                provider=provider,
+                provider=provider_plan,
                 provider_result=provider_result,
                 correlation_id=request.correlation_id,
                 accepted=accepted,
@@ -384,9 +389,9 @@ class VerificationOrchestrator:
                 lineage_versions=lineage_versions,
             )
             if provider_accepted:
-                providers_contributed.append(provider.provider_id)
-            elif provider_result.evidence:
-                providers_failed.append(provider.provider_id)
+                providers_contributed.append(outcome.plan.provider_id)
+            elif outcome.evidence:
+                providers_failed.append(outcome.plan.provider_id)
 
         if not providers_contributed and providers_failed:
             return self._provider_failed(
@@ -443,6 +448,272 @@ class VerificationOrchestrator:
             providers_failed=tuple(providers_failed),
             scoring_version=score.evidence_score_version,
             lineage_versions=tuple(sorted(lineage_versions)),
+        )
+
+    def _build_execution_plan(
+        self,
+        *,
+        stored: VerificationRequest,
+        request: VerificationRequestEnvelope,
+        providers: tuple[ProviderPlan, ...],
+        now: datetime,
+    ) -> tuple[tuple[ProviderExecutionPlanItem, ...], tuple[tuple[UUID, str], ...]]:
+        if len(providers) > self.collection_config.max_providers:
+            providers = providers[: self.collection_config.max_providers]
+        planned: list[ProviderExecutionPlanItem] = []
+        ineligible: list[tuple[UUID, str]] = []
+        ordered = tuple(
+            sorted(
+                enumerate(providers),
+                key=lambda item: (str(item[1].provider_id), item[1].provider_alias),
+            )
+        )
+        for planned_order, (_original_index, provider) in enumerate(ordered):
+            self._transition(
+                stored,
+                VerificationLifecyclePhase.PROVIDER_ELIGIBILITY,
+                request.correlation_id,
+                [VerificationLifecyclePhase.PROVIDER_ELIGIBILITY.value],
+            )
+            rights = self.provider_rights_service.authorize(
+                ProviderRightsRequest(
+                    account_id=request.authenticated.account_id,
+                    provider_id=provider.provider_id,
+                    provider_alias=provider.provider_alias,
+                    capability=request.material.capability,
+                    billing_mode=provider.billing_mode,
+                    requested_region=provider.requested_region,
+                    requested_data_use=provider.requested_data_use,
+                    requested_execution_mode=provider.requested_execution_mode,
+                    credential_mode=provider.credential_mode,
+                    evidence_retention_requested=provider.evidence_retention_requested,
+                    caching_requested=provider.caching_requested,
+                    evaluated_at=now,
+                ),
+                correlation_id=request.correlation_id,
+            )
+            if not rights.allowed:
+                ineligible.append(
+                    (
+                        provider.provider_id,
+                        VerificationOrchestrationReason.PROVIDER_RIGHTS_UNAVAILABLE.value,
+                    )
+                )
+                self._audit(
+                    stored,
+                    AuditEventType.VERIFICATION_PROVIDER_ELIGIBILITY_EVALUATED,
+                    request.correlation_id,
+                    [VerificationOrchestrationReason.PROVIDER_RIGHTS_UNAVAILABLE.value],
+                    provider_id=provider.provider_id,
+                )
+                continue
+            health = self.provider_health_service.evaluate(
+                ProviderHealthRequest(
+                    account_id=request.authenticated.account_id,
+                    provider_id=provider.provider_id,
+                    capability=request.material.capability,
+                    evaluated_at=now,
+                ),
+                correlation_id=request.correlation_id,
+            )
+            if not health.usable:
+                ineligible.append(
+                    (
+                        provider.provider_id,
+                        VerificationOrchestrationReason.PROVIDER_HEALTH_UNSAFE.value,
+                    )
+                )
+                self._audit(
+                    stored,
+                    AuditEventType.VERIFICATION_PROVIDER_ELIGIBILITY_EVALUATED,
+                    request.correlation_id,
+                    [VerificationOrchestrationReason.PROVIDER_HEALTH_UNSAFE.value],
+                    provider_id=provider.provider_id,
+                )
+                self._persist_skipped_provider_attempt(
+                    stored=stored,
+                    provider=provider,
+                    planned_order=planned_order,
+                    reason=health.provider_health.value,
+                    correlation_id=request.correlation_id,
+                )
+                continue
+            plan = PlannedProviderCollection(
+                provider_id=provider.provider_id,
+                provider_alias=provider.provider_alias,
+                capability=request.material.capability,
+                rights_version=rights.rights_version,
+                planned_order=planned_order,
+                timeout_ms=_milliseconds(self.collection_config.per_provider_timeout),
+                execution_mode=provider.requested_execution_mode,
+                billing_mode=provider.billing_mode,
+            )
+            planned.append(ProviderExecutionPlanItem(provider=provider, plan=plan))
+        self._audit(
+            stored,
+            AuditEventType.VERIFICATION_COLLECTION_PLANNED,
+            request.correlation_id,
+            [VERIFICATION_EXECUTION_PLAN_VERSION],
+            planned_provider_ids=[item.plan.provider_id for item in planned],
+        )
+        return tuple(planned), tuple(ineligible)
+
+    async def _collect_provider_outcomes(
+        self,
+        *,
+        stored: VerificationRequest,
+        request: VerificationRequestEnvelope,
+        planned: tuple[ProviderExecutionPlanItem, ...],
+    ) -> tuple[ProviderCollectionOutcome, ...]:
+        semaphore = asyncio.Semaphore(self.collection_config.max_concurrency)
+        deadline_seconds = self.collection_config.overall_deadline.total_seconds()
+        tasks = [
+            asyncio.create_task(
+                self._collect_one_provider(
+                    stored=stored,
+                    request=request,
+                    item=item,
+                    semaphore=semaphore,
+                )
+            )
+            for item in planned
+        ]
+        done, pending = await asyncio.wait(tasks, timeout=deadline_seconds)
+        outcomes: list[ProviderCollectionOutcome] = []
+        for task in done:
+            outcomes.append(task.result())
+        if pending:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            completed = _aware_utc(self.clock())
+            pending_items = {
+                id(task): planned[index]
+                for index, task in enumerate(tasks)
+                if task in pending
+            }
+            for item in pending_items.values():
+                outcomes.append(
+                    ProviderCollectionOutcome(
+                        plan=item.plan,
+                        attempt_outcome=ProviderAttemptOutcome.CANCELLED_BY_DEADLINE,
+                        evidence=(),
+                        latency_ms=None,
+                        started_at=completed,
+                        completed_at=completed,
+                        deadline_exceeded=True,
+                        error_code="CANCELLED_BY_DEADLINE",
+                    )
+                )
+            self._audit(
+                stored,
+                AuditEventType.VERIFICATION_COLLECTION_DEADLINE_REACHED,
+                request.correlation_id,
+                [VerificationOrchestrationReason.COLLECTION_DEADLINE_REACHED.value],
+            )
+        ordered = tuple(
+            sorted(
+                outcomes,
+                key=lambda outcome: (
+                    outcome.plan.planned_order,
+                    str(outcome.plan.provider_id),
+                    outcome.plan.provider_alias,
+                ),
+            )
+        )
+        self._audit(
+            stored,
+            AuditEventType.VERIFICATION_COLLECTION_COMPLETED,
+            request.correlation_id,
+            [outcome.attempt_outcome.value for outcome in ordered],
+            planned_provider_ids=[outcome.plan.provider_id for outcome in ordered],
+        )
+        return ordered
+
+    async def _collect_one_provider(
+        self,
+        *,
+        stored: VerificationRequest,
+        request: VerificationRequestEnvelope,
+        item: ProviderExecutionPlanItem,
+        semaphore: asyncio.Semaphore,
+    ) -> ProviderCollectionOutcome:
+        async with semaphore:
+            started = _aware_utc(self.clock())
+            self._audit(
+                stored,
+                AuditEventType.PROVIDER_ATTEMPT_STARTED,
+                request.correlation_id,
+                [ProviderAttemptOutcome.SUCCESS.value],
+                provider_id=item.plan.provider_id,
+                provider_outcome=ProviderAttemptOutcome.SUCCESS.value,
+                planned_order=item.plan.planned_order,
+                timeout_ms=item.plan.timeout_ms,
+            )
+            start_monotonic = time.monotonic()
+            provider_request = EvidenceProviderRequest(
+                account_id=request.authenticated.account_id,
+                verification_request_id=stored.id,
+                provider_id=item.plan.provider_id,
+                capability=request.material.capability,
+                mode=request.material.mode,
+                assurance=request.material.assurance,
+            )
+            try:
+                provider_result = await asyncio.wait_for(
+                    _collect_adapter(item.provider.adapter, provider_request),
+                    timeout=self.collection_config.per_provider_timeout.total_seconds(),
+                )
+            except TimeoutError:
+                return self._provider_outcome(
+                    item=item,
+                    started=started,
+                    start_monotonic=start_monotonic,
+                    outcome=ProviderAttemptOutcome.TIMEOUT,
+                    evidence=(),
+                    error_code="TIMEOUT",
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                return self._provider_outcome(
+                    item=item,
+                    started=started,
+                    start_monotonic=start_monotonic,
+                    outcome=ProviderAttemptOutcome.SYSTEM_FAILURE,
+                    evidence=(),
+                    error_code="SYSTEM_FAILURE",
+                )
+            return self._provider_outcome(
+                item=item,
+                started=started,
+                start_monotonic=start_monotonic,
+                outcome=provider_result.attempt_outcome,
+                evidence=provider_result.evidence,
+                latency_ms=provider_result.latency_ms,
+            )
+
+    def _provider_outcome(
+        self,
+        *,
+        item: ProviderExecutionPlanItem,
+        started: datetime,
+        start_monotonic: float,
+        outcome: ProviderAttemptOutcome,
+        evidence: tuple[ProviderEvidencePayload, ...],
+        latency_ms: int | None = None,
+        error_code: str | None = None,
+    ) -> ProviderCollectionOutcome:
+        completed = _aware_utc(self.clock())
+        measured_latency = max(0, int((time.monotonic() - start_monotonic) * 1000))
+        return ProviderCollectionOutcome(
+            plan=item.plan,
+            attempt_outcome=outcome,
+            evidence=evidence,
+            latency_ms=latency_ms if latency_ms is not None else measured_latency,
+            started_at=started,
+            completed_at=completed,
+            error_code=error_code,
         )
 
     def _normalize_and_lineage(
@@ -805,6 +1076,124 @@ class VerificationOrchestrator:
         self.session.flush()
         self._audit(stored, AuditEventType.REQUEST_ACCEPTED, correlation_id, reason_codes)
 
+    def _persist_provider_attempt(
+        self,
+        *,
+        stored: VerificationRequest,
+        outcome: ProviderCollectionOutcome,
+        correlation_id: UUID,
+    ) -> None:
+        health_effect = (
+            "NO_HEALTH_EFFECT"
+            if outcome.attempt_outcome
+            in {
+                ProviderAttemptOutcome.SYSTEM_FAILURE,
+                ProviderAttemptOutcome.CANCELLED_BY_DEADLINE,
+                ProviderAttemptOutcome.CIRCUIT_OPEN,
+                ProviderAttemptOutcome.DISABLED,
+            }
+            else "AFFECTS_PROVIDER_HEALTH"
+        )
+        row = ProviderAttempt(
+            id=uuid4(),
+            account_id=stored.account_id,
+            provider_id=outcome.plan.provider_id,
+            verification_request_id=stored.id,
+            authorization_request_id=None,
+            provider_health="UNKNOWN",
+            status=outcome.attempt_outcome.value,
+            error_code=outcome.error_code,
+            capability=outcome.plan.capability.value,
+            attempt_number=1,
+            planned_order=outcome.plan.planned_order,
+            started_at=outcome.started_at,
+            completed_at=outcome.completed_at,
+            latency_ms=outcome.latency_ms,
+            timeout_ms=outcome.plan.timeout_ms,
+            deadline_exceeded=outcome.deadline_exceeded,
+            health_effect=health_effect,
+            attempt_metadata={
+                "execution_plan_version": outcome.plan.config_version,
+                "billing_mode": outcome.plan.billing_mode.value,
+                "execution_mode": outcome.plan.execution_mode.value,
+                "provider_alias": outcome.plan.provider_alias,
+                "rights_version": outcome.plan.rights_version,
+            },
+        )
+        self.session.add(row)
+        self.session.flush()
+        event_type = {
+            ProviderAttemptOutcome.SUCCESS: AuditEventType.PROVIDER_ATTEMPT_SUCCEEDED,
+            ProviderAttemptOutcome.TIMEOUT: AuditEventType.PROVIDER_ATTEMPT_TIMED_OUT,
+            ProviderAttemptOutcome.CANCELLED_BY_DEADLINE: (
+                AuditEventType.PROVIDER_ATTEMPT_TIMED_OUT
+            ),
+            ProviderAttemptOutcome.RATE_LIMITED: AuditEventType.PROVIDER_ATTEMPT_RATE_LIMITED,
+        }.get(outcome.attempt_outcome, AuditEventType.PROVIDER_ATTEMPT_FAILED)
+        self._audit(
+            stored,
+            event_type,
+            correlation_id,
+            [outcome.attempt_outcome.value],
+            provider_id=outcome.plan.provider_id,
+            provider_outcome=outcome.attempt_outcome.value,
+            provider_attempt_id=row.id,
+            planned_order=outcome.plan.planned_order,
+            attempt_number=1,
+            timeout_ms=outcome.plan.timeout_ms,
+            deadline_exceeded=outcome.deadline_exceeded,
+            latency_ms=outcome.latency_ms,
+            health_effect=health_effect,
+        )
+
+    def _persist_skipped_provider_attempt(
+        self,
+        *,
+        stored: VerificationRequest,
+        provider: ProviderPlan,
+        planned_order: int,
+        reason: str,
+        correlation_id: UUID,
+    ) -> None:
+        row = ProviderAttempt(
+            id=uuid4(),
+            account_id=stored.account_id,
+            provider_id=provider.provider_id,
+            verification_request_id=stored.id,
+            authorization_request_id=None,
+            provider_health=reason,
+            status=reason,
+            error_code=reason,
+            capability=stored.lifecycle_metadata.get("capability")
+            if isinstance(stored.lifecycle_metadata.get("capability"), str)
+            else None,
+            attempt_number=0,
+            planned_order=planned_order,
+            started_at=None,
+            completed_at=None,
+            latency_ms=None,
+            timeout_ms=None,
+            deadline_exceeded=False,
+            health_effect="NO_EXECUTION",
+            attempt_metadata={
+                "execution_plan_version": VERIFICATION_EXECUTION_PLAN_VERSION,
+                "provider_alias": provider.provider_alias,
+            },
+        )
+        self.session.add(row)
+        self.session.flush()
+        self._audit(
+            stored,
+            AuditEventType.PROVIDER_ATTEMPT_FAILED,
+            correlation_id,
+            [reason],
+            provider_id=provider.provider_id,
+            provider_attempt_id=row.id,
+            planned_order=planned_order,
+            attempt_number=0,
+            health_effect="NO_EXECUTION",
+        )
+
     def _audit(
         self,
         stored: VerificationRequest,
@@ -815,6 +1204,15 @@ class VerificationOrchestrator:
         provider_id: UUID | None = None,
         final_score: int | None = None,
         now: datetime | None = None,
+        provider_outcome: str | None = None,
+        provider_attempt_id: UUID | None = None,
+        planned_provider_ids: list[UUID] | None = None,
+        planned_order: int | None = None,
+        attempt_number: int | None = None,
+        timeout_ms: int | None = None,
+        deadline_exceeded: bool | None = None,
+        latency_ms: int | None = None,
+        health_effect: str | None = None,
     ) -> None:
         payload: dict[str, object] = {
             "request_id": stored.request_id,
@@ -827,6 +1225,30 @@ class VerificationOrchestrator:
         }
         if provider_id is not None:
             payload["provider_id"] = provider_id
+        if provider_outcome is not None:
+            payload["provider_outcome"] = provider_outcome
+        if provider_attempt_id is not None:
+            payload["provider_attempt_id"] = provider_attempt_id
+        if planned_provider_ids is not None:
+            payload["planned_provider_ids"] = planned_provider_ids
+            payload["execution_plan_version"] = VERIFICATION_EXECUTION_PLAN_VERSION
+            payload["max_providers"] = self.collection_config.max_providers
+            payload["max_concurrency"] = self.collection_config.max_concurrency
+            payload["overall_deadline_ms"] = _milliseconds(
+                self.collection_config.overall_deadline
+            )
+        if planned_order is not None:
+            payload["planned_order"] = planned_order
+        if attempt_number is not None:
+            payload["attempt_number"] = attempt_number
+        if timeout_ms is not None:
+            payload["timeout_ms"] = timeout_ms
+        if deadline_exceeded is not None:
+            payload["deadline_exceeded"] = deadline_exceeded
+        if latency_ms is not None:
+            payload["latency_ms"] = latency_ms
+        if health_effect is not None:
+            payload["health_effect"] = health_effect
         if final_score is not None:
             payload["final_score"] = final_score
         if now is not None:
@@ -882,6 +1304,53 @@ def _aware_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+async def _collect_adapter(
+    adapter: EvidenceProvider | AsyncEvidenceProvider,
+    request: EvidenceProviderRequest,
+) -> ProviderEvidenceResult:
+    result = adapter.collect(request)
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
+def _provider_plan_for_outcome(
+    providers: tuple[ProviderPlan, ...],
+    outcome: ProviderCollectionOutcome,
+) -> ProviderPlan:
+    for provider in providers:
+        if provider.provider_id == outcome.plan.provider_id:
+            return provider
+    raise VerificationOrchestrationError("provider plan missing for outcome")
+
+
+def _milliseconds(value: timedelta) -> int:
+    return int(value.total_seconds() * 1000)
+
+
+def _validate_collection_config(config: ProviderCollectionConfig) -> None:
+    if not 1 <= config.max_providers <= 32:
+        raise VerificationOrchestrationError(
+            VerificationOrchestrationReason.CONFIGURATION_UNSAFE.value
+        )
+    if not 1 <= config.max_concurrency <= config.max_providers:
+        raise VerificationOrchestrationError(
+            VerificationOrchestrationReason.CONFIGURATION_UNSAFE.value
+        )
+    if config.max_attempts_per_provider != 1:
+        raise VerificationOrchestrationError(
+            VerificationOrchestrationReason.CONFIGURATION_UNSAFE.value
+        )
+    if not 0 < config.per_provider_timeout.total_seconds() <= 60:
+        raise VerificationOrchestrationError(
+            VerificationOrchestrationReason.CONFIGURATION_UNSAFE.value
+        )
+    if not 0 < config.overall_deadline.total_seconds() <= 300:
+        raise VerificationOrchestrationError(
+            VerificationOrchestrationReason.CONFIGURATION_UNSAFE.value
+        )
+
+
 def _metadata_list(metadata: Mapping[str, object], key: str) -> tuple[str, ...]:
     value = metadata.get(key)
     if not isinstance(value, list):
@@ -892,11 +1361,16 @@ def _metadata_list(metadata: Mapping[str, object], key: str) -> tuple[str, ...]:
 __all__ = [
     "AuthenticatedVerificationContext",
     "CrossTenantVerificationAccess",
+    "AsyncEvidenceProvider",
     "EvidenceProvider",
     "EvidenceProviderRequest",
+    "PlannedProviderCollection",
+    "ProviderCollectionConfig",
+    "ProviderCollectionOutcome",
     "ProviderEvidencePayload",
     "ProviderEvidenceResult",
     "ProviderPlan",
+    "VERIFICATION_EXECUTION_PLAN_VERSION",
     "VERIFICATION_ORCHESTRATION_VERSION",
     "VERIFICATION_REQUEST_SCHEMA_VERSION",
     "VerificationLifecyclePhase",

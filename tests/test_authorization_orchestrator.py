@@ -728,7 +728,7 @@ def test_verification_request_can_be_orchestrated_when_required() -> None:
     class FakeVerificationOrchestrator:
         calls = 0
 
-        def verify(
+        async def verify_async(
             self,
             request: VerificationRequestEnvelope,
             *,
@@ -773,3 +773,20 @@ def test_verification_request_can_be_orchestrated_when_required() -> None:
     assert result.decision is PolicyDecision.ALLOW
     assert result.receipt_id is not None
     assert fake_verification.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_authorize_async_can_run_inside_existing_event_loop() -> None:
+    session = build_session()
+    add_policy(session)
+    verification_result_id = add_verification_result(session)
+
+    result = await service(session).authorize_async(
+        envelope(
+            idempotency_key="async-authorize",
+            verification_result_id=verification_result_id,
+        )
+    )
+
+    assert result.decision is PolicyDecision.ALLOW
+    assert result.receipt_id is not None

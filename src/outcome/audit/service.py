@@ -98,6 +98,14 @@ class AuditEventType(StrEnum):
     VERIFICATION_FAILED = "verification_failed"
     VERIFICATION_IDEMPOTENT_REPLAY = "verification_idempotent_replay"
     VERIFICATION_IDEMPOTENCY_CONFLICT = "verification_idempotency_conflict"
+    VERIFICATION_COLLECTION_PLANNED = "verification_collection_planned"
+    VERIFICATION_COLLECTION_COMPLETED = "verification_collection_completed"
+    VERIFICATION_COLLECTION_DEADLINE_REACHED = "verification_collection_deadline_reached"
+    PROVIDER_ATTEMPT_STARTED = "provider_attempt_started"
+    PROVIDER_ATTEMPT_SUCCEEDED = "provider_attempt_succeeded"
+    PROVIDER_ATTEMPT_TIMED_OUT = "provider_attempt_timed_out"
+    PROVIDER_ATTEMPT_FAILED = "provider_attempt_failed"
+    PROVIDER_ATTEMPT_RATE_LIMITED = "provider_attempt_rate_limited"
     AUTHORIZATION_RECEIVED = "authorization_received"
     AUTHORIZATION_VALIDATED = "authorization_validated"
     AUTHORIZATION_VERIFICATION_COMPLETED = "authorization_verification_completed"
@@ -208,6 +216,17 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "billing_mode",
         "capability",
         "provider_attempt_id",
+        "provider_outcome",
+        "planned_provider_ids",
+        "planned_order",
+        "attempt_number",
+        "timeout_ms",
+        "deadline_exceeded",
+        "health_effect",
+        "execution_plan_version",
+        "max_providers",
+        "max_concurrency",
+        "overall_deadline_ms",
         "verification_result_id",
         "verification_request_id",
         "authorization_result_id",
@@ -232,7 +251,6 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "providers_contributed",
         "providers_failed",
         "lineage_versions",
-        "timeout_ms",
         "error_code",
         "ledger_account",
         "ledger_transaction_id",

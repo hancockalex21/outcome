@@ -164,6 +164,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     authorization_orchestration_migration = importlib.import_module(
         "migrations.versions.20260915_0014_add_authorization_orchestration_metadata"
     )
+    provider_attempt_async_migration = importlib.import_module(
+        "migrations.versions.20260917_0015_add_provider_attempt_async_metadata"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -183,6 +186,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         verification_orchestration_migration.op = operations
         policy_hash_migration.op = operations
         authorization_orchestration_migration.op = operations
+        provider_attempt_async_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
@@ -198,6 +202,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         verification_orchestration_migration.upgrade()
         policy_hash_migration.upgrade()
         authorization_orchestration_migration.upgrade()
+        provider_attempt_async_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -207,6 +212,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        provider_attempt_async_migration.downgrade()
         authorization_orchestration_migration.downgrade()
         policy_hash_migration.downgrade()
         verification_orchestration_migration.downgrade()

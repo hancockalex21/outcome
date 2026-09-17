@@ -1,10 +1,15 @@
 from outcome.verification.orchestrator import (
+    VERIFICATION_EXECUTION_PLAN_VERSION,
     VERIFICATION_ORCHESTRATION_VERSION,
     VERIFICATION_REQUEST_SCHEMA_VERSION,
+    AsyncEvidenceProvider,
     AuthenticatedVerificationContext,
     CrossTenantVerificationAccess,
     EvidenceProvider,
     EvidenceProviderRequest,
+    PlannedProviderCollection,
+    ProviderCollectionConfig,
+    ProviderCollectionOutcome,
     ProviderEvidencePayload,
     ProviderEvidenceResult,
     ProviderPlan,
@@ -20,12 +25,17 @@ from outcome.verification.orchestrator import (
 )
 
 __all__ = [
+    "VERIFICATION_EXECUTION_PLAN_VERSION",
     "VERIFICATION_ORCHESTRATION_VERSION",
     "VERIFICATION_REQUEST_SCHEMA_VERSION",
+    "AsyncEvidenceProvider",
     "AuthenticatedVerificationContext",
     "CrossTenantVerificationAccess",
     "EvidenceProvider",
     "EvidenceProviderRequest",
+    "PlannedProviderCollection",
+    "ProviderCollectionConfig",
+    "ProviderCollectionOutcome",
     "ProviderEvidencePayload",
     "ProviderEvidenceResult",
     "ProviderPlan",

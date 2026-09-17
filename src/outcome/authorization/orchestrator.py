@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 from collections.abc import Callable, Mapping
@@ -185,6 +186,19 @@ class AuthorizationOrchestrator:
         *,
         verification_providers: tuple[ProviderPlan, ...] = (),
     ) -> AuthorizationOrchestrationResult:
+        return asyncio.run(
+            self.authorize_async(
+                request,
+                verification_providers=verification_providers,
+            )
+        )
+
+    async def authorize_async(
+        self,
+        request: AuthorizationRequestEnvelope,
+        *,
+        verification_providers: tuple[ProviderPlan, ...] = (),
+    ) -> AuthorizationOrchestrationResult:
         issued_at = _aware_utc(self.clock())
         expires_at = self._validate_expiration(request.material.authorization_expires_at, issued_at)
         material_hash = self._material_hash(request.material)
@@ -214,7 +228,7 @@ class AuthorizationOrchestrator:
                 request.correlation_id,
                 [AuthorizationLifecyclePhase.VALIDATING.value],
             )
-            verification = self._verification_reference(
+            verification = await self._verification_reference_async(
                 request,
                 stored,
                 verification_providers,
@@ -345,7 +359,7 @@ class AuthorizationOrchestrator:
                 exc,
             )
 
-    def _verification_reference(
+    async def _verification_reference_async(
         self,
         request: AuthorizationRequestEnvelope,
         stored: AuthorizationRequest,
@@ -376,7 +390,7 @@ class AuthorizationOrchestrator:
             request.correlation_id,
             [AuthorizationLifecyclePhase.VERIFICATION.value],
         )
-        verification_result = self.verification_orchestrator.verify(
+        verification_result = await self.verification_orchestrator.verify_async(
             request.material.verification_request,
             providers=providers,
         )

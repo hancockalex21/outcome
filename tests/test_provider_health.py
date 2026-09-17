@@ -101,6 +101,21 @@ def evaluate(service: ProviderHealthService):
     )
 
 
+def test_provider_attempt_outcome_values_are_stable() -> None:
+    assert [value.value for value in ProviderAttemptOutcome] == [
+        "SUCCESS",
+        "TIMEOUT",
+        "PROVIDER_FAILURE",
+        "RATE_LIMITED",
+        "CIRCUIT_OPEN",
+        "DISABLED",
+        "CANCELLED_BY_DEADLINE",
+        "SYSTEM_FAILURE",
+    ]
+    with pytest.raises(ValueError):
+        ProviderAttemptOutcome("PROVIDER_TIMEOUT")
+
+
 def pricing_config() -> CapabilityPricingConfig:
     return CapabilityPricingConfig(
         capability=CapabilityName.VERIFY,
@@ -145,8 +160,8 @@ def test_timeout_threshold_opens_circuit() -> None:
     session = setup_session()
     service = health_service(session, timeout_threshold=2)
 
-    record(service, ProviderAttemptOutcome.PROVIDER_TIMEOUT)
-    result = record(service, ProviderAttemptOutcome.PROVIDER_TIMEOUT)
+    record(service, ProviderAttemptOutcome.TIMEOUT)
+    result = record(service, ProviderAttemptOutcome.TIMEOUT)
 
     assert result.provider_health is ProviderHealth.CIRCUIT_OPEN
     assert result.timeout_count == 2
@@ -161,6 +176,19 @@ def test_system_failures_do_not_damage_provider_health() -> None:
     assert result.provider_health is ProviderHealth.HEALTHY
     assert result.failure_count == 0
     assert result.consecutive_failures == 0
+    assert result.request_count == 1
+
+
+def test_deadline_cancellation_does_not_count_as_provider_failure() -> None:
+    session = setup_session()
+    service = health_service(session, failure_threshold=1, timeout_threshold=1)
+
+    result = record(service, ProviderAttemptOutcome.CANCELLED_BY_DEADLINE)
+
+    assert result.provider_health is ProviderHealth.HEALTHY
+    assert result.failure_count == 0
+    assert result.consecutive_failures == 0
+    assert result.timeout_count == 1
     assert result.request_count == 1
 
 
