@@ -5,6 +5,7 @@ from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from outcome.audit import AuditEventType, AuditService
@@ -294,38 +295,58 @@ class LedgerService:
                 transaction.transaction_type != transaction_type
                 or self._transaction_amount(transaction.entries) != amount_micro_usd
             ):
-                raise IdempotencyConflict("idempotency key reused with conflicting parameters")
+                raise IdempotencyConflict(
+                    "idempotency key reused with conflicting parameters"
+                ) from None
             return transaction
 
         transaction_id = uuid4()
-        transaction_record = CreditLedgerTransaction(
-            id=uuid4(),
-            account_id=account_id,
-            transaction_id=transaction_id,
-            idempotency_key=idempotency_key,
-            transaction_type=transaction_type.value,
-            amount_micro_usd=amount_micro_usd,
-            currency=MICRO_USD_CURRENCY,
-        )
-        self.session.add(transaction_record)
-        self.session.flush()
-        entries = tuple(
-            CreditLedgerEntry(
-                id=uuid4(),
+        try:
+            with self.session.begin_nested():
+                transaction_record = CreditLedgerTransaction(
+                    id=uuid4(),
+                    account_id=account_id,
+                    transaction_id=transaction_id,
+                    idempotency_key=idempotency_key,
+                    transaction_type=transaction_type.value,
+                    amount_micro_usd=amount_micro_usd,
+                    currency=MICRO_USD_CURRENCY,
+                )
+                self.session.add(transaction_record)
+                self.session.flush()
+                entries = tuple(
+                    CreditLedgerEntry(
+                        id=uuid4(),
+                        account_id=account_id,
+                        transaction_id=transaction_id,
+                        ledger_account=posting.ledger_account.value,
+                        direction=posting.direction.value,
+                        amount_micro_usd=posting.amount_micro_usd,
+                        amount_minor=posting.amount_micro_usd,
+                        currency=MICRO_USD_CURRENCY,
+                        entry_type=transaction_type.value,
+                        reference_id=correlation_id,
+                    )
+                    for posting in postings
+                )
+                self.session.add_all(entries)
+                self.session.flush()
+        except IntegrityError:
+            existing_after_race = self._entries_for_idempotency(
                 account_id=account_id,
-                transaction_id=transaction_id,
-                ledger_account=posting.ledger_account.value,
-                direction=posting.direction.value,
-                amount_micro_usd=posting.amount_micro_usd,
-                amount_minor=posting.amount_micro_usd,
-                currency=MICRO_USD_CURRENCY,
-                entry_type=transaction_type.value,
-                reference_id=correlation_id,
+                idempotency_key=idempotency_key,
             )
-            for posting in postings
-        )
-        self.session.add_all(entries)
-        self.session.flush()
+            if not existing_after_race:
+                raise
+            transaction = self._transaction_from_entries(existing_after_race)
+            if (
+                transaction.transaction_type != transaction_type
+                or self._transaction_amount(transaction.entries) != amount_micro_usd
+            ):
+                raise IdempotencyConflict(
+                    "idempotency key reused with conflicting parameters"
+                ) from None
+            return transaction
         self.audit_service.append_event(
             account_id=account_id,
             event_type=AuditEventType.LEDGER_TRANSACTION_CREATED,

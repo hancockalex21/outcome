@@ -44,6 +44,14 @@ class AuditEventType(StrEnum):
     CREDIT_RELEASED = "credit_released"
     CREDIT_REFUND_ADJUSTMENT_CREATED = "credit_refund_adjustment_created"
     LEDGER_TRANSACTION_CREATED = "ledger_transaction_created"
+    FUNDING_CREATED = "funding_created"
+    FUNDING_GATEWAY_OBJECT_CREATED = "funding_gateway_object_created"
+    PAYMENT_WEBHOOK_RECEIVED = "payment_webhook_received"
+    PAYMENT_WEBHOOK_VERIFIED = "payment_webhook_verified"
+    PAYMENT_WEBHOOK_REJECTED = "payment_webhook_rejected"
+    FUNDING_SUCCEEDED = "funding_succeeded"
+    FUNDING_FAILED = "funding_failed"
+    FUNDING_RECONCILIATION_REQUIRED = "funding_reconciliation_required"
     CAPABILITY_UNAVAILABLE = "capability_unavailable"
     PRICING_QUOTE_GENERATED = "pricing_quote_generated"
     PRICING_QUOTE_REJECTED = "pricing_quote_rejected"
@@ -217,6 +225,9 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "receipt_id",
         "consumption_id",
         "execution_request_id",
+        "funding_id",
+        "payment_event_id",
+        "external_payment_id",
         "billing_reservation_id",
         "available_micro_usd",
         "billing_mode",

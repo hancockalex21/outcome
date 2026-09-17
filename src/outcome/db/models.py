@@ -589,6 +589,66 @@ class CreditLedgerTransaction(AccountScopedMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
 
 
+class AccountFunding(AccountScopedMixin, Base):
+    __tablename__ = "account_fundings"
+    __table_args__ = (
+        Index("ix_account_fundings_account_created_at", "account_id", "created_at"),
+        Index("ix_account_fundings_external_payment", "gateway", "external_payment_id"),
+        UniqueConstraint(
+            "account_id",
+            "idempotency_key",
+            name="uq_account_fundings_account_idempotency",
+        ),
+        UniqueConstraint(
+            "gateway",
+            "external_payment_id",
+            name="uq_account_fundings_external_payment",
+        ),
+        UniqueConstraint(
+            "ledger_transaction_id",
+            name="uq_account_fundings_ledger_transaction",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    funding_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, unique=True)
+    amount_micro_usd: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    gateway: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    succeeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ledger_transaction_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    succeeded_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reason_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    metadata_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class PaymentWebhookEvent(TimestampMixin, Base):
+    __tablename__ = "payment_webhook_events"
+    __table_args__ = (
+        Index("ix_payment_webhook_events_received", "gateway", "created_at"),
+        UniqueConstraint(
+            "gateway",
+            "external_event_id",
+            name="uq_payment_webhook_events_gateway_event",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    gateway: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    processing_status: Mapped[str] = mapped_column(String(64), nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    funding_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    external_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reason_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    safe_payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
 class CreditReservation(AccountScopedMixin, Base):
     __tablename__ = "credit_reservations"
     __table_args__ = (
@@ -689,7 +749,9 @@ __all__ = [
     "CreditLedgerEntry",
     "CreditLedgerTransaction",
     "CreditReservation",
+    "AccountFunding",
     "CustomerProviderCredential",
+    "PaymentWebhookEvent",
     "EvidenceItem",
     "EvidenceLineage",
     "EvidenceLineageRelationship",

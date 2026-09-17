@@ -29,6 +29,8 @@ EXPECTED_TABLES = {
     "credit_ledger_entries",
     "credit_ledger_transactions",
     "credit_reservations",
+    "account_fundings",
+    "payment_webhook_events",
     "audit_events",
     "benchmark_cases",
     "provider_metrics",
@@ -71,6 +73,9 @@ EXPECTED_INDEXES = {
     "ix_credit_ledger_entries_transaction_id",
     "ix_credit_ledger_transactions_account_created_at",
     "ix_credit_ledger_transactions_transaction_id",
+    "ix_account_fundings_account_created_at",
+    "ix_account_fundings_external_payment",
+    "ix_payment_webhook_events_received",
     "ix_audit_events_account_created_at",
     "ix_audit_events_request_id",
     "ix_benchmark_cases_account_created_at",
@@ -83,7 +88,8 @@ EXPECTED_INDEXES = {
 def test_model_metadata_contains_control_plane_tables() -> None:
     assert EXPECTED_TABLES <= set(metadata.tables)
 
-    for table_name in EXPECTED_TABLES - {"accounts"}:
+    account_scoped_tables = EXPECTED_TABLES - {"accounts", "payment_webhook_events"}
+    for table_name in account_scoped_tables:
         table = metadata.tables[table_name]
         assert "account_id" in table.columns
         assert any(
@@ -167,6 +173,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     provider_attempt_async_migration = importlib.import_module(
         "migrations.versions.20260917_0015_add_provider_attempt_async_metadata"
     )
+    account_funding_migration = importlib.import_module(
+        "migrations.versions.20260917_0016_add_account_funding"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -187,6 +196,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         policy_hash_migration.op = operations
         authorization_orchestration_migration.op = operations
         provider_attempt_async_migration.op = operations
+        account_funding_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
@@ -203,6 +213,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         policy_hash_migration.upgrade()
         authorization_orchestration_migration.upgrade()
         provider_attempt_async_migration.upgrade()
+        account_funding_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -212,6 +223,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        account_funding_migration.downgrade()
         provider_attempt_async_migration.downgrade()
         authorization_orchestration_migration.downgrade()
         policy_hash_migration.downgrade()

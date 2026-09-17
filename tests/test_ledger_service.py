@@ -268,7 +268,7 @@ def test_concurrent_same_idempotency_attempts_cannot_double_post() -> None:
             results = list(executor.map(lambda _: post_once(), range(2)))
 
         with session_factory() as session:
-            assert sorted(results) == ["duplicate", "posted"]
+            assert sorted(results) == ["posted", "posted"]
             assert session.scalar(select(func.count()).select_from(CreditLedgerEntry)) == 2
 
 
