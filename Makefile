@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test migrate dev mcp
+.PHONY: install lint typecheck test migrate dev mcp benchmark benchmark-report benchmark-update-golden
 
 PYTHON ?= python3.12
 VENV ?= .venv
@@ -26,3 +26,11 @@ dev:
 
 mcp:
 	$(BIN)/outcome-mcp
+
+benchmark:
+	$(BIN)/python -m outcome.benchmarks.cli --output benchmarks/latest-report.json
+
+benchmark-report: benchmark
+
+benchmark-update-golden:
+	$(BIN)/python -m outcome.benchmarks.cli --update-golden --output benchmarks/latest-report.json

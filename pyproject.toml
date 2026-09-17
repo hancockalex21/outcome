@@ -37,6 +37,7 @@ dev = [
 
 [project.scripts]
 outcome-api = "outcome.api.main:run"
+outcome-benchmark = "outcome.benchmarks.cli:main"
 outcome-mcp = "outcome.mcp.main:run"
 outcome-worker = "outcome.worker.main:run"
 

@@ -74,6 +74,7 @@ make test
 make migrate
 make dev
 make mcp
+make benchmark
 ```
 
 ## Local Services

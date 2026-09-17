@@ -1,0 +1,1058 @@
+{
+  "code_version": "offline-evaluation-v1",
+  "component_analysis": {
+    "contradiction": {
+      "average": 8968,
+      "count": 16,
+      "max": 10000,
+      "min": 1750
+    },
+    "corroboration": {
+      "average": 3031,
+      "count": 16,
+      "max": 7000,
+      "min": 0
+    },
+    "coverage": {
+      "average": 5812,
+      "count": 16,
+      "max": 10000,
+      "min": 0
+    },
+    "extraction_quality": {
+      "average": 5218,
+      "count": 16,
+      "max": 9000,
+      "min": 0
+    },
+    "freshness": {
+      "average": 10000,
+      "count": 16,
+      "max": 10000,
+      "min": 10000
+    },
+    "independence": {
+      "average": 2625,
+      "count": 16,
+      "max": 7000,
+      "min": 0
+    },
+    "source_authority": {
+      "average": 4578,
+      "count": 16,
+      "max": 9000,
+      "min": 0
+    }
+  },
+  "confusion_matrix": {
+    "CONTRADICTED": {
+      "CONTRADICTED": 2,
+      "INCONCLUSIVE": 0,
+      "VERIFIED": 0
+    },
+    "INSUFFICIENT_EVIDENCE": {
+      "CONTRADICTED": 0,
+      "INCONCLUSIVE": 3,
+      "VERIFIED": 1
+    },
+    "SUPPORTED": {
+      "CONTRADICTED": 0,
+      "INCONCLUSIVE": 2,
+      "VERIFIED": 4
+    }
+  },
+  "dataset_version": "benchmark-dataset-v1",
+  "evaluated_factual_cases": 12,
+  "exact_label_status_agreement": {
+    "matched": 9,
+    "rate_basis_points": 7500,
+    "total": 12
+  },
+  "extraction_quality_analysis": {
+    "DIRECT_TEXT": {
+      "case_count": 9,
+      "match_rate_basis_points": 7777,
+      "matched": 7
+    },
+    "EXACT_STRUCTURED": {
+      "case_count": 5,
+      "match_rate_basis_points": 8000,
+      "matched": 4
+    },
+    "NONE": {
+      "case_count": 4,
+      "match_rate_basis_points": 0,
+      "matched": 0
+    },
+    "NORMALIZED_TEXT": {
+      "case_count": 1,
+      "match_rate_basis_points": 10000,
+      "matched": 1
+    }
+  },
+  "false_high_score_cases": [
+    "verify-stale-authoritative"
+  ],
+  "false_low_score_cases": [],
+  "lineage_analysis": {
+    "NONE": {
+      "case_count": 4,
+      "match_rate_basis_points": 0,
+      "matched": 0
+    },
+    "ORIGINAL": {
+      "case_count": 9,
+      "match_rate_basis_points": 7777,
+      "matched": 7
+    },
+    "SYNDICATED": {
+      "case_count": 1,
+      "match_rate_basis_points": 0,
+      "matched": 0
+    },
+    "UNKNOWN": {
+      "case_count": 2,
+      "match_rate_basis_points": 10000,
+      "matched": 2
+    }
+  },
+  "operational_failures": {
+    "PROVIDER_FAILED": 3,
+    "SYSTEM_FAILURE": 1
+  },
+  "precision_recall": {
+    "CONTRADICTED": {
+      "actual_total": 2,
+      "precision_basis_points": 10000,
+      "predicted_status": "CONTRADICTED",
+      "predicted_total": 2,
+      "recall_basis_points": 10000,
+      "true_positive": 2
+    },
+    "INSUFFICIENT_EVIDENCE": {
+      "actual_total": 4,
+      "precision_basis_points": 6000,
+      "predicted_status": "INCONCLUSIVE",
+      "predicted_total": 5,
+      "recall_basis_points": 7500,
+      "true_positive": 3
+    },
+    "SUPPORTED": {
+      "actual_total": 6,
+      "precision_basis_points": 8000,
+      "predicted_status": "VERIFIED",
+      "predicted_total": 5,
+      "recall_basis_points": 6666,
+      "true_positive": 4
+    }
+  },
+  "report_version": "benchmark-report-v1",
+  "results": [
+    {
+      "case_id": "verify-supported-registry",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 1,
+      "evidence_score": 7250,
+      "expected_label": "SUPPORTED",
+      "extraction_qualities": [
+        "EXACT_STRUCTURED"
+      ],
+      "independent_evidence_count": 1,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "AUTHORITATIVE_SOURCE_PRESENT",
+        "VERIFICATION_STATUS_VERIFIED"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 4500,
+        "coverage": 10000,
+        "extraction_quality": 9000,
+        "freshness": 10000,
+        "independence": 3500,
+        "source_authority": 9000
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "AUTHORITATIVE_REGISTRY"
+      ],
+      "verification_status": "VERIFIED"
+    },
+    {
+      "case_id": "verify-contradicted-primary",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 1,
+      "evidence_score": 3750,
+      "expected_label": "CONTRADICTED",
+      "extraction_qualities": [
+        "DIRECT_TEXT"
+      ],
+      "independent_evidence_count": 0,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "AUTHORITATIVE_SOURCE_PRESENT",
+        "CONTRADICTORY_EVIDENCE_PRESENT",
+        "VERIFICATION_STATUS_CONTRADICTED"
+      ],
+      "score_components": {
+        "contradiction": 1750,
+        "corroboration": 0,
+        "coverage": 10000,
+        "extraction_quality": 8000,
+        "freshness": 10000,
+        "independence": 0,
+        "source_authority": 8500
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "PRIMARY"
+      ],
+      "verification_status": "CONTRADICTED"
+    },
+    {
+      "case_id": "verify-insufficient-unknown",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 1,
+      "evidence_score": 2300,
+      "expected_label": "INSUFFICIENT_EVIDENCE",
+      "extraction_qualities": [
+        "DIRECT_TEXT"
+      ],
+      "independent_evidence_count": 0,
+      "lineage_types": [
+        "UNKNOWN"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "INSUFFICIENT_EVIDENCE",
+        "VERIFICATION_STATUS_INCONCLUSIVE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 0,
+        "coverage": 0,
+        "extraction_quality": 0,
+        "freshness": 10000,
+        "independence": 0,
+        "source_authority": 0
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "UNKNOWN"
+      ],
+      "verification_status": "INCONCLUSIVE"
+    },
+    {
+      "case_id": "verify-multiple-independent",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 2,
+      "evidence_score": 8125,
+      "expected_label": "SUPPORTED",
+      "extraction_qualities": [
+        "DIRECT_TEXT",
+        "EXACT_STRUCTURED"
+      ],
+      "independent_evidence_count": 2,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "AUTHORITATIVE_SOURCE_PRESENT",
+        "MULTIPLE_INDEPENDENT_SOURCES",
+        "VERIFICATION_STATUS_VERIFIED"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 7000,
+        "coverage": 10000,
+        "extraction_quality": 8500,
+        "freshness": 10000,
+        "independence": 7000,
+        "source_authority": 7750
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "AUTHORITATIVE_REGISTRY",
+        "REPUTABLE_SECONDARY"
+      ],
+      "verification_status": "VERIFIED"
+    },
+    {
+      "case_id": "verify-syndicated-duplicates",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 2,
+      "evidence_score": 6000,
+      "expected_label": "SUPPORTED",
+      "extraction_qualities": [
+        "DIRECT_TEXT"
+      ],
+      "independent_evidence_count": 1,
+      "lineage_types": [
+        "SYNDICATED"
+      ],
+      "match_classification": "MISMATCH",
+      "provider_outcomes": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "DEPENDENT_EVIDENCE_DISCOUNTED",
+        "VERIFICATION_STATUS_INCONCLUSIVE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 5000,
+        "coverage": 10000,
+        "extraction_quality": 8000,
+        "freshness": 10000,
+        "independence": 3500,
+        "source_authority": 3000
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "DERIVATIVE"
+      ],
+      "verification_status": "INCONCLUSIVE"
+    },
+    {
+      "case_id": "verify-reputable-secondary",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 1,
+      "evidence_score": 6600,
+      "expected_label": "SUPPORTED",
+      "extraction_qualities": [
+        "DIRECT_TEXT"
+      ],
+      "independent_evidence_count": 1,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MISMATCH",
+      "provider_outcomes": [
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "VERIFICATION_STATUS_INCONCLUSIVE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 4500,
+        "coverage": 10000,
+        "extraction_quality": 8000,
+        "freshness": 10000,
+        "independence": 3500,
+        "source_authority": 6500
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "REPUTABLE_SECONDARY"
+      ],
+      "verification_status": "INCONCLUSIVE"
+    },
+    {
+      "case_id": "verify-partial-extraction",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 1,
+      "evidence_score": 6460,
+      "expected_label": "INSUFFICIENT_EVIDENCE",
+      "extraction_qualities": [
+        "DIRECT_TEXT"
+      ],
+      "independent_evidence_count": 1,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "LIMITED_COVERAGE",
+        "VERIFICATION_STATUS_INCONCLUSIVE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 4500,
+        "coverage": 3000,
+        "extraction_quality": 8000,
+        "freshness": 10000,
+        "independence": 3500,
+        "source_authority": 6500
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "REPUTABLE_SECONDARY"
+      ],
+      "verification_status": "INCONCLUSIVE"
+    },
+    {
+      "case_id": "verify-stale-authoritative",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 1,
+      "evidence_score": 7250,
+      "expected_label": "INSUFFICIENT_EVIDENCE",
+      "extraction_qualities": [
+        "EXACT_STRUCTURED"
+      ],
+      "independent_evidence_count": 1,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MISMATCH",
+      "provider_outcomes": [
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "AUTHORITATIVE_SOURCE_PRESENT",
+        "VERIFICATION_STATUS_VERIFIED"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 4500,
+        "coverage": 10000,
+        "extraction_quality": 9000,
+        "freshness": 10000,
+        "independence": 3500,
+        "source_authority": 9000
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "AUTHORITATIVE_REGISTRY"
+      ],
+      "verification_status": "VERIFIED"
+    },
+    {
+      "case_id": "verify-conflicting-evidence",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 2,
+      "evidence_score": 5150,
+      "expected_label": "CONTRADICTED",
+      "extraction_qualities": [
+        "DIRECT_TEXT"
+      ],
+      "independent_evidence_count": 1,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "AUTHORITATIVE_SOURCE_PRESENT",
+        "CONTRADICTORY_EVIDENCE_PRESENT",
+        "VERIFICATION_STATUS_CONTRADICTED"
+      ],
+      "score_components": {
+        "contradiction": 1750,
+        "corroboration": 4500,
+        "coverage": 10000,
+        "extraction_quality": 8000,
+        "freshness": 10000,
+        "independence": 3500,
+        "source_authority": 7500
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "PRIMARY",
+        "REPUTABLE_SECONDARY"
+      ],
+      "verification_status": "CONTRADICTED"
+    },
+    {
+      "case_id": "verify-provider-timeout",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "evidence_score": 2300,
+      "expected_label": "INSUFFICIENT_EVIDENCE",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "OPERATIONAL_FAILURE",
+      "operational_failure_category": "PROVIDER_FAILED",
+      "provider_outcomes": [
+        "TIMEOUT"
+      ],
+      "reason_codes": [
+        "INSUFFICIENT_EVIDENCE",
+        "PROVIDER_FAILURE_OVERRIDE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 0,
+        "coverage": 0,
+        "extraction_quality": 0,
+        "freshness": 10000,
+        "independence": 0,
+        "source_authority": 0
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [],
+      "verification_status": "PROVIDER_FAILED"
+    },
+    {
+      "case_id": "verify-provider-failure",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "evidence_score": 2300,
+      "expected_label": "INSUFFICIENT_EVIDENCE",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "OPERATIONAL_FAILURE",
+      "operational_failure_category": "PROVIDER_FAILED",
+      "provider_outcomes": [
+        "PROVIDER_FAILURE"
+      ],
+      "reason_codes": [
+        "INSUFFICIENT_EVIDENCE",
+        "PROVIDER_FAILURE_OVERRIDE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 0,
+        "coverage": 0,
+        "extraction_quality": 0,
+        "freshness": 10000,
+        "independence": 0,
+        "source_authority": 0
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [],
+      "verification_status": "PROVIDER_FAILED"
+    },
+    {
+      "case_id": "verify-system-failure",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "evidence_score": 2300,
+      "expected_label": "INSUFFICIENT_EVIDENCE",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "OPERATIONAL_FAILURE",
+      "operational_failure_category": "SYSTEM_FAILURE",
+      "provider_outcomes": [
+        "SYSTEM_FAILURE"
+      ],
+      "reason_codes": [
+        "INSUFFICIENT_EVIDENCE",
+        "SYSTEM_FAILURE_OVERRIDE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 0,
+        "coverage": 0,
+        "extraction_quality": 0,
+        "freshness": 10000,
+        "independence": 0,
+        "source_authority": 0
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [],
+      "verification_status": "SYSTEM_FAILURE"
+    },
+    {
+      "case_id": "verify-hostile-prompt-evidence",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 1,
+      "evidence_score": 2300,
+      "expected_label": "INSUFFICIENT_EVIDENCE",
+      "extraction_qualities": [
+        "NORMALIZED_TEXT"
+      ],
+      "independent_evidence_count": 0,
+      "lineage_types": [
+        "UNKNOWN"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "INSUFFICIENT_EVIDENCE",
+        "VERIFICATION_STATUS_INCONCLUSIVE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 0,
+        "coverage": 0,
+        "extraction_quality": 0,
+        "freshness": 10000,
+        "independence": 0,
+        "source_authority": 0
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "UNKNOWN"
+      ],
+      "verification_status": "INCONCLUSIVE"
+    },
+    {
+      "case_id": "verify-malformed-json",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "evidence_score": 2300,
+      "expected_label": "INSUFFICIENT_EVIDENCE",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "OPERATIONAL_FAILURE",
+      "operational_failure_category": "PROVIDER_FAILED",
+      "provider_outcomes": [
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "INSUFFICIENT_EVIDENCE",
+        "PROVIDER_FAILURE_OVERRIDE"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 0,
+        "coverage": 0,
+        "extraction_quality": 0,
+        "freshness": 10000,
+        "independence": 0,
+        "source_authority": 0
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [],
+      "verification_status": "PROVIDER_FAILED"
+    },
+    {
+      "case_id": "verify-ordering-a",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 2,
+      "evidence_score": 8125,
+      "expected_label": "SUPPORTED",
+      "extraction_qualities": [
+        "DIRECT_TEXT",
+        "EXACT_STRUCTURED"
+      ],
+      "independent_evidence_count": 2,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "AUTHORITATIVE_SOURCE_PRESENT",
+        "MULTIPLE_INDEPENDENT_SOURCES",
+        "VERIFICATION_STATUS_VERIFIED"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 7000,
+        "coverage": 10000,
+        "extraction_quality": 8500,
+        "freshness": 10000,
+        "independence": 7000,
+        "source_authority": 7750
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "AUTHORITATIVE_REGISTRY",
+        "REPUTABLE_SECONDARY"
+      ],
+      "verification_status": "VERIFIED"
+    },
+    {
+      "case_id": "verify-ordering-b",
+      "case_kind": "VERIFICATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 2,
+      "evidence_score": 8125,
+      "expected_label": "SUPPORTED",
+      "extraction_qualities": [
+        "DIRECT_TEXT",
+        "EXACT_STRUCTURED"
+      ],
+      "independent_evidence_count": 2,
+      "lineage_types": [
+        "ORIGINAL"
+      ],
+      "match_classification": "MATCH",
+      "provider_outcomes": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "reason_codes": [
+        "AUTHORITATIVE_SOURCE_PRESENT",
+        "MULTIPLE_INDEPENDENT_SOURCES",
+        "VERIFICATION_STATUS_VERIFIED"
+      ],
+      "score_components": {
+        "contradiction": 10000,
+        "corroboration": 7000,
+        "coverage": 10000,
+        "extraction_quality": 8500,
+        "freshness": 10000,
+        "independence": 7000,
+        "source_authority": 7750
+      },
+      "scoring_version": "evidence-score-v1",
+      "source_classes": [
+        "AUTHORITATIVE_REGISTRY",
+        "REPUTABLE_SECONDARY"
+      ],
+      "verification_status": "VERIFIED"
+    },
+    {
+      "case_id": "auth-allow-verified",
+      "case_kind": "AUTHORIZATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "expected_policy_decision": "ALLOW",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "MATCH",
+      "policy_decision": "ALLOW",
+      "provider_outcomes": [],
+      "reason_codes": [
+        "POLICY_ALLOWED"
+      ],
+      "score_components": {},
+      "source_classes": []
+    },
+    {
+      "case_id": "auth-contradiction-block",
+      "case_kind": "AUTHORIZATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "expected_policy_decision": "BLOCK",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "MATCH",
+      "policy_decision": "BLOCK",
+      "provider_outcomes": [],
+      "reason_codes": [
+        "VERIFICATION_CONTRADICTED"
+      ],
+      "score_components": {},
+      "source_classes": []
+    },
+    {
+      "case_id": "auth-insufficient-assurance",
+      "case_kind": "AUTHORIZATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "expected_policy_decision": "RETRY_HIGHER_ASSURANCE",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "MATCH",
+      "policy_decision": "RETRY_HIGHER_ASSURANCE",
+      "provider_outcomes": [],
+      "reason_codes": [
+        "ASSURANCE_INSUFFICIENT"
+      ],
+      "score_components": {},
+      "source_classes": []
+    },
+    {
+      "case_id": "auth-provider-failure-escalate",
+      "case_kind": "AUTHORIZATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "expected_policy_decision": "ESCALATE",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "MATCH",
+      "policy_decision": "ESCALATE",
+      "provider_outcomes": [],
+      "reason_codes": [
+        "PROVIDER_FAILURE"
+      ],
+      "score_components": {},
+      "source_classes": []
+    },
+    {
+      "case_id": "auth-system-failure-block",
+      "case_kind": "AUTHORIZATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "expected_policy_decision": "BLOCK",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "MATCH",
+      "policy_decision": "BLOCK",
+      "provider_outcomes": [],
+      "reason_codes": [
+        "SYSTEM_FAILURE"
+      ],
+      "score_components": {},
+      "source_classes": []
+    },
+    {
+      "case_id": "auth-limit-block",
+      "case_kind": "AUTHORIZATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "expected_policy_decision": "BLOCK",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "MATCH",
+      "policy_decision": "BLOCK",
+      "provider_outcomes": [],
+      "reason_codes": [
+        "ACTION_LIMIT_EXCEEDED"
+      ],
+      "score_components": {},
+      "source_classes": []
+    },
+    {
+      "case_id": "auth-expired-context-block",
+      "case_kind": "AUTHORIZATION",
+      "code_version": "offline-evaluation-v1",
+      "dataset_version": "benchmark-dataset-v1",
+      "evidence_count": 0,
+      "expected_policy_decision": "BLOCK",
+      "extraction_qualities": [],
+      "independent_evidence_count": 0,
+      "lineage_types": [],
+      "match_classification": "MATCH",
+      "policy_decision": "BLOCK",
+      "provider_outcomes": [],
+      "reason_codes": [
+        "TIME_CONSTRAINT_VIOLATION"
+      ],
+      "score_components": {},
+      "source_classes": []
+    }
+  ],
+  "score_buckets": {
+    "0-999": {
+      "case_count": 0,
+      "disagreement_count": 0,
+      "disagreement_rate_basis_points": 0,
+      "label_distribution": {},
+      "verification_distribution": {}
+    },
+    "1000-1999": {
+      "case_count": 0,
+      "disagreement_count": 0,
+      "disagreement_rate_basis_points": 0,
+      "label_distribution": {},
+      "verification_distribution": {}
+    },
+    "2000-2999": {
+      "case_count": 6,
+      "disagreement_count": 4,
+      "disagreement_rate_basis_points": 6666,
+      "label_distribution": {
+        "INSUFFICIENT_EVIDENCE": 6
+      },
+      "verification_distribution": {
+        "INCONCLUSIVE": 2,
+        "PROVIDER_FAILED": 3,
+        "SYSTEM_FAILURE": 1
+      }
+    },
+    "3000-3999": {
+      "case_count": 1,
+      "disagreement_count": 0,
+      "disagreement_rate_basis_points": 0,
+      "label_distribution": {
+        "CONTRADICTED": 1
+      },
+      "verification_distribution": {
+        "CONTRADICTED": 1
+      }
+    },
+    "4000-4999": {
+      "case_count": 0,
+      "disagreement_count": 0,
+      "disagreement_rate_basis_points": 0,
+      "label_distribution": {},
+      "verification_distribution": {}
+    },
+    "5000-5999": {
+      "case_count": 1,
+      "disagreement_count": 0,
+      "disagreement_rate_basis_points": 0,
+      "label_distribution": {
+        "CONTRADICTED": 1
+      },
+      "verification_distribution": {
+        "CONTRADICTED": 1
+      }
+    },
+    "6000-6999": {
+      "case_count": 3,
+      "disagreement_count": 2,
+      "disagreement_rate_basis_points": 6666,
+      "label_distribution": {
+        "INSUFFICIENT_EVIDENCE": 1,
+        "SUPPORTED": 2
+      },
+      "verification_distribution": {
+        "INCONCLUSIVE": 3
+      }
+    },
+    "7000-7999": {
+      "case_count": 2,
+      "disagreement_count": 1,
+      "disagreement_rate_basis_points": 5000,
+      "label_distribution": {
+        "INSUFFICIENT_EVIDENCE": 1,
+        "SUPPORTED": 1
+      },
+      "verification_distribution": {
+        "VERIFIED": 2
+      }
+    },
+    "8000-8999": {
+      "case_count": 3,
+      "disagreement_count": 0,
+      "disagreement_rate_basis_points": 0,
+      "label_distribution": {
+        "SUPPORTED": 3
+      },
+      "verification_distribution": {
+        "VERIFIED": 3
+      }
+    },
+    "9000-10000": {
+      "case_count": 0,
+      "disagreement_count": 0,
+      "disagreement_rate_basis_points": 0,
+      "label_distribution": {},
+      "verification_distribution": {}
+    }
+  },
+  "score_distribution_by_label": {
+    "CONTRADICTED": {
+      "3000-3999": 1,
+      "5000-5999": 1
+    },
+    "INSUFFICIENT_EVIDENCE": {
+      "2000-2999": 6,
+      "6000-6999": 1,
+      "7000-7999": 1
+    },
+    "SUPPORTED": {
+      "6000-6999": 2,
+      "7000-7999": 1,
+      "8000-8999": 3
+    }
+  },
+  "score_distribution_by_outcome": {
+    "CONTRADICTED": {
+      "3000-3999": 1,
+      "5000-5999": 1
+    },
+    "INCONCLUSIVE": {
+      "2000-2999": 2,
+      "6000-6999": 3
+    },
+    "PROVIDER_FAILED": {
+      "2000-2999": 3
+    },
+    "SYSTEM_FAILURE": {
+      "2000-2999": 1
+    },
+    "VERIFIED": {
+      "7000-7999": 2,
+      "8000-8999": 3
+    }
+  },
+  "source_class_analysis": {
+    "AUTHORITATIVE_REGISTRY": {
+      "case_count": 5,
+      "match_rate_basis_points": 8000,
+      "matched": 4
+    },
+    "DERIVATIVE": {
+      "case_count": 1,
+      "match_rate_basis_points": 0,
+      "matched": 0
+    },
+    "NONE": {
+      "case_count": 4,
+      "match_rate_basis_points": 0,
+      "matched": 0
+    },
+    "PRIMARY": {
+      "case_count": 2,
+      "match_rate_basis_points": 10000,
+      "matched": 2
+    },
+    "REPUTABLE_SECONDARY": {
+      "case_count": 6,
+      "match_rate_basis_points": 8333,
+      "matched": 5
+    },
+    "UNKNOWN": {
+      "case_count": 2,
+      "match_rate_basis_points": 10000,
+      "matched": 2
+    }
+  },
+  "total_cases": 23
+}
