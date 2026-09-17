@@ -491,6 +491,48 @@ class AuthorizationResult(AccountScopedMixin, Base):
     provenance: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
 
 
+class AuthorizationBilling(AccountScopedMixin, Base):
+    __tablename__ = "authorization_billings"
+    __table_args__ = (
+        Index("ix_authorization_billings_account_created_at", "account_id", "created_at"),
+        Index("ix_authorization_billings_billing_id", "billing_id", unique=True),
+        UniqueConstraint(
+            "account_id",
+            "authorization_request_id",
+            name="uq_authorization_billings_account_authorization",
+        ),
+        UniqueConstraint(
+            "settlement_ledger_transaction_id",
+            name="uq_authorization_billings_settlement_ledger",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    billing_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    authorization_request_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("authorization_requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    pricing_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    quote_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    max_reserved_spend_micro_usd: Mapped[int] = mapped_column(Integer, nullable=False)
+    reservation_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    reservation_state: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    actual_charge_micro_usd: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    settlement_ledger_transaction_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
+    billing_state: Mapped[str] = mapped_column(String(64), nullable=False)
+    reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reason_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    execution_mode: Mapped[str] = mapped_column(String(64), nullable=False)
+    billing_metadata: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
 class Receipt(AccountScopedMixin, Base):
     __tablename__ = "receipts"
     __table_args__ = (
@@ -745,6 +787,7 @@ __all__ = [
     "AuditEvent",
     "AuthorizationRequest",
     "AuthorizationResult",
+    "AuthorizationBilling",
     "BenchmarkCase",
     "CreditLedgerEntry",
     "CreditLedgerTransaction",

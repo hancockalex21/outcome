@@ -302,7 +302,7 @@ class PricingService:
             billing_mode=billing_mode,
             pricing_config_version=config.pricing_config_version,
             quoted_price_micro_usd=quoted_price,
-            maximum_reserved_spend_micro_usd=expected_total_cost,
+            maximum_reserved_spend_micro_usd=quoted_price,
             included_evidence_budget_micro_usd=config.included_evidence_budget_micro_usd,
             maximum_retry_budget_micro_usd=config.maximum_retry_budget_micro_usd,
             expected_total_cost_micro_usd=expected_total_cost,

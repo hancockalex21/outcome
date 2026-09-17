@@ -22,6 +22,13 @@ from outcome.actions import (
     material_action_hash,
 )
 from outcome.audit import AuditEventType, AuditService
+from outcome.billing import (
+    AuthorizationBillingService,
+    BillingError,
+    BillingQuote,
+    BillingResult,
+    CrossTenantBillingAccess,
+)
 from outcome.db.models import AuthorizationRequest, AuthorizationResult, VerificationResult
 from outcome.domain import AssuranceLevel, PolicyDecision, VerificationStatus
 from outcome.execution import ExecutionAuthorizationRequest, ExecutionAuthorizationValidator
@@ -31,6 +38,7 @@ from outcome.policies import (
     PolicyVerificationReference,
     verification_reference_from_model,
 )
+from outcome.pricing import BillingMode, CapabilityName
 from outcome.receipts import (
     ReceiptService,
     ReceiptVerificationStatus,
@@ -157,6 +165,7 @@ class AuthorizationOrchestrator:
         verification_orchestrator: VerificationOrchestrator | None = None,
         receipt_service: ReceiptService,
         execution_validator: ExecutionAuthorizationValidator,
+        billing_service: AuthorizationBillingService | None = None,
         audit_service: AuditService | None = None,
         clock: Callable[[], datetime] | None = None,
         max_authorization_ttl: timedelta = timedelta(
@@ -177,6 +186,7 @@ class AuthorizationOrchestrator:
         )
         self.receipt_service = receipt_service
         self.execution_validator = execution_validator
+        self.billing_service = billing_service
         self.clock = clock or (lambda: datetime.now(UTC))
         self.max_authorization_ttl = max_authorization_ttl
 
@@ -227,6 +237,10 @@ class AuthorizationOrchestrator:
                 AuthorizationLifecyclePhase.VALIDATING,
                 request.correlation_id,
                 [AuthorizationLifecyclePhase.VALIDATING.value],
+            )
+            billing_quote = self._reserve_billing_if_configured(
+                request=request,
+                stored=stored,
             )
             verification = await self._verification_reference_async(
                 request,
@@ -288,6 +302,14 @@ class AuthorizationOrchestrator:
                 policy_result.reason_codes,
             )
             if policy_result.decision is not PolicyDecision.ALLOW:
+                self._settle_billing_if_configured(
+                    request=request,
+                    stored=stored,
+                    quote=billing_quote,
+                    decision=policy_result.decision,
+                    system_failure=False,
+                    billable_work_occurred=verification is not None,
+                )
                 return self._persist_result(
                     stored=stored,
                     request=request,
@@ -308,6 +330,14 @@ class AuthorizationOrchestrator:
                 AuthorizationLifecyclePhase.RECEIPT_ISSUANCE,
                 request.correlation_id,
                 [AuthorizationLifecyclePhase.RECEIPT_ISSUANCE.value],
+            )
+            self._settle_billing_if_configured(
+                request=request,
+                stored=stored,
+                quote=billing_quote,
+                decision=PolicyDecision.ALLOW,
+                system_failure=False,
+                billable_work_occurred=True,
             )
             signed = self._issue_and_verify_receipt(
                 request=request,
@@ -335,6 +365,7 @@ class AuthorizationOrchestrator:
         except CrossTenantAuthorizationAccess:
             raise
         except AuthorizationOrchestrationError as exc:
+            self._settle_system_failure_billing(request=request, stored=stored)
             return self._system_failure_result(
                 stored,
                 request,
@@ -347,6 +378,7 @@ class AuthorizationOrchestrator:
                 exc,
             )
         except Exception as exc:
+            self._settle_system_failure_billing(request=request, stored=stored)
             return self._system_failure_result(
                 stored,
                 request,
@@ -358,6 +390,107 @@ class AuthorizationOrchestrator:
                 None,
                 exc,
             )
+
+    def _reserve_billing_if_configured(
+        self,
+        *,
+        request: AuthorizationRequestEnvelope,
+        stored: AuthorizationRequest,
+    ) -> BillingQuote | None:
+        if self.billing_service is None:
+            return None
+        quote = self.billing_service.quote(
+            account_id=request.authenticated.account_id,
+            authorization_request_id=stored.id,
+            capability=_billing_capability(request.material.material_action),
+            execution_mode=_billing_mode(request.material.material_action),
+            material={
+                "action_schema_version": request.material.action_schema_version,
+                "assurance_level": request.material.assurance_level.value,
+                "material_action_hash": stored.material_hash,
+                "policy_id": str(request.material.policy_id),
+                "policy_version": request.material.policy_version,
+            },
+            correlation_id=request.correlation_id,
+        )
+        self.billing_service.create_or_reserve(
+            account_id=request.authenticated.account_id,
+            authorization_request_id=stored.id,
+            quote=quote,
+            correlation_id=request.correlation_id,
+        )
+        self.billing_service.mark_in_progress(
+            account_id=request.authenticated.account_id,
+            authorization_request_id=stored.id,
+            correlation_id=request.correlation_id,
+        )
+        return quote
+
+    def _settle_billing_if_configured(
+        self,
+        *,
+        request: AuthorizationRequestEnvelope,
+        stored: AuthorizationRequest,
+        quote: BillingQuote | None,
+        decision: PolicyDecision,
+        system_failure: bool,
+        billable_work_occurred: bool,
+    ) -> None:
+        if self.billing_service is None or quote is None:
+            return
+        self.billing_service.settle(
+            account_id=request.authenticated.account_id,
+            authorization_request_id=stored.id,
+            quote=quote,
+            decision=decision,
+            system_failure=system_failure,
+            billable_work_occurred=billable_work_occurred,
+            correlation_id=request.correlation_id,
+        )
+
+    def _settle_system_failure_billing(
+        self,
+        *,
+        request: AuthorizationRequestEnvelope,
+        stored: AuthorizationRequest,
+    ) -> None:
+        if self.billing_service is None:
+            return
+        try:
+            billing = self.billing_service.get_for_authorization(
+                account_id=request.authenticated.account_id,
+                authorization_request_id=stored.id,
+            )
+            if billing.actual_charge_micro_usd and billing.actual_charge_micro_usd > 0:
+                self.billing_service.compensate_system_failure(
+                    account_id=request.authenticated.account_id,
+                    authorization_request_id=stored.id,
+                    correlation_id=request.correlation_id,
+                )
+            else:
+                self.billing_service.settle(
+                    account_id=request.authenticated.account_id,
+                    authorization_request_id=stored.id,
+                    quote=billing.quote,
+                    decision=PolicyDecision.BLOCK,
+                    system_failure=True,
+                    billable_work_occurred=False,
+                    correlation_id=request.correlation_id,
+                )
+        except (BillingError, CrossTenantBillingAccess):
+            return
+
+    def _billing_provenance(self, stored: AuthorizationRequest) -> dict[str, object] | None:
+        if self.billing_service is None:
+            return None
+        try:
+            billing = self.billing_service.get_for_authorization(
+                account_id=stored.account_id,
+                authorization_request_id=stored.id,
+            )
+        except CrossTenantBillingAccess:
+            return None
+        return _billing_provenance(billing)
 
     async def _verification_reference_async(
         self,
@@ -523,6 +656,7 @@ class AuthorizationOrchestrator:
                 verification=verification,
                 receipt_id=signed_receipt.payload.receipt_id if signed_receipt else None,
                 reason_codes=reason_codes,
+                billing=self._billing_provenance(stored),
             ),
         )
         self.session.add(result)
@@ -941,12 +1075,14 @@ def _provenance(
     verification: PolicyVerificationReference | None,
     receipt_id: UUID | None,
     reason_codes: tuple[str, ...],
+    billing: Mapping[str, object] | None,
 ) -> dict[str, object]:
     return {
         "action_binding_version": "action-binding-v1",
         "action_hash": action_hash,
         "action_schema_version": request.material.action_schema_version,
         "assurance_level": request.material.assurance_level.value,
+        "billing": dict(billing) if billing is not None else None,
         "evidence_score_basis_points": (
             verification.evidence_score_basis_points if verification else None
         ),
@@ -965,6 +1101,25 @@ def _provenance(
             str(verification.verification_result_id) if verification else None
         ),
         "verification_status": verification.status.value if verification else None,
+    }
+
+
+def _billing_provenance(billing: BillingResult) -> dict[str, object]:
+    return {
+        "actual_charge_micro_usd": billing.actual_charge_micro_usd,
+        "billing_id": str(billing.billing_id),
+        "billing_state": billing.state.value,
+        "currency": billing.quote.currency,
+        "execution_mode": billing.quote.execution_mode.value,
+        "max_reserved_spend_micro_usd": billing.quote.max_reserved_spend_micro_usd,
+        "pricing_version": billing.quote.pricing_version,
+        "quote_fingerprint": billing.quote.quote_fingerprint,
+        "reservation_id": str(billing.reservation_id) if billing.reservation_id else None,
+        "settlement_ledger_transaction_id": (
+            str(billing.settlement_ledger_transaction_id)
+            if billing.settlement_ledger_transaction_id
+            else None
+        ),
     }
 
 
@@ -1006,6 +1161,20 @@ def _verification_status_from_provenance(
     if value is None:
         return None
     return VerificationStatus(str(value))
+
+
+def _billing_capability(material_action: Mapping[str, object]) -> CapabilityName:
+    value = material_action.get("capability")
+    if value == CapabilityName.VERIFY.value:
+        return CapabilityName.VERIFY
+    return CapabilityName.AUTHORIZE
+
+
+def _billing_mode(material_action: Mapping[str, object]) -> BillingMode:
+    value = material_action.get("billing_mode")
+    if value == BillingMode.BYOK.value:
+        return BillingMode.BYOK
+    return BillingMode.MANAGED
 
 
 __all__ = [

@@ -24,6 +24,7 @@ EXPECTED_TABLES = {
     "provider_attempts",
     "verification_results",
     "authorization_results",
+    "authorization_billings",
     "receipts",
     "receipt_consumptions",
     "credit_ledger_entries",
@@ -64,6 +65,8 @@ EXPECTED_INDEXES = {
     "ix_verification_results_request_id",
     "ix_authorization_results_account_created_at",
     "ix_authorization_results_request_id",
+    "ix_authorization_billings_account_created_at",
+    "ix_authorization_billings_billing_id",
     "ix_receipts_account_created_at",
     "ix_receipts_receipt_id",
     "ix_receipt_consumptions_account_created_at",
@@ -176,6 +179,9 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
     account_funding_migration = importlib.import_module(
         "migrations.versions.20260917_0016_add_account_funding"
     )
+    authorization_billing_migration = importlib.import_module(
+        "migrations.versions.20260917_0017_add_authorization_billing"
+    )
     engine = sa.create_engine("sqlite:///:memory:")
 
     with engine.begin() as connection:
@@ -197,6 +203,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         authorization_orchestration_migration.op = operations
         provider_attempt_async_migration.op = operations
         account_funding_migration.op = operations
+        authorization_billing_migration.op = operations
 
         base_migration.upgrade()
         api_key_migration.upgrade()
@@ -214,6 +221,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
         authorization_orchestration_migration.upgrade()
         provider_attempt_async_migration.upgrade()
         account_funding_migration.upgrade()
+        authorization_billing_migration.upgrade()
 
         inspector = sa.inspect(connection)
         assert EXPECTED_TABLES <= set(inspector.get_table_names())
@@ -223,6 +231,7 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
             for index in inspector.get_indexes(table_name)
         }
 
+        authorization_billing_migration.downgrade()
         account_funding_migration.downgrade()
         provider_attempt_async_migration.downgrade()
         authorization_orchestration_migration.downgrade()

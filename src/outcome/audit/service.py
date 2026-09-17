@@ -52,6 +52,13 @@ class AuditEventType(StrEnum):
     FUNDING_SUCCEEDED = "funding_succeeded"
     FUNDING_FAILED = "funding_failed"
     FUNDING_RECONCILIATION_REQUIRED = "funding_reconciliation_required"
+    BILLING_QUOTED = "billing_quoted"
+    BILLING_RESERVED = "billing_reserved"
+    BILLING_RESERVATION_FAILED = "billing_reservation_failed"
+    BILLING_IN_PROGRESS = "billing_in_progress"
+    BILLING_SETTLED = "billing_settled"
+    BILLING_RELEASED = "billing_released"
+    BILLING_RECONCILIATION_REQUIRED = "billing_reconciliation_required"
     CAPABILITY_UNAVAILABLE = "capability_unavailable"
     PRICING_QUOTE_GENERATED = "pricing_quote_generated"
     PRICING_QUOTE_REJECTED = "pricing_quote_rejected"
@@ -226,6 +233,7 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "consumption_id",
         "execution_request_id",
         "funding_id",
+        "billing_id",
         "payment_event_id",
         "external_payment_id",
         "billing_reservation_id",
@@ -275,6 +283,8 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "ledger_account",
         "ledger_transaction_id",
         "maximum_reserved_micro_usd",
+        "actual_charge_micro_usd",
+        "billing_state",
         "pricing_config_version",
         "quoted_price_micro_usd",
         "receipt_version",
