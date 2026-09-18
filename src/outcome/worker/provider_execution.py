@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -505,6 +506,7 @@ class ProviderExecutor:
             raise ValueError("unsupported execution mode")
         if envelope.destination.scheme.lower() != "https":
             raise ValueError("provider destination must use https")
+        _validate_provider_destination(envelope.destination)
         _validate_request_parameters(envelope.request_parameters)
 
     def _provenance(
@@ -652,6 +654,29 @@ def _credential_mode(execution_mode: BillingMode) -> ProviderCredentialMode:
 
 def _validate_request_parameters(value: Mapping[str, object]) -> None:
     _validate_mapping(value, depth=0, count=[0])
+
+
+def _validate_provider_destination(destination: ProviderDestination) -> None:
+    hostname = destination.hostname.strip().lower().rstrip(".")
+    if not hostname:
+        raise ValueError("provider destination hostname is required")
+    if hostname in {"localhost", "metadata.google.internal"}:
+        raise ValueError("provider destination hostname is not allowed")
+    if hostname.endswith(".localhost"):
+        raise ValueError("provider destination hostname is not allowed")
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return
+    if (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_unspecified
+        or address.is_reserved
+    ):
+        raise ValueError("provider destination address is not allowed")
 
 
 def _validate_mapping(value: Mapping[str, object], *, depth: int, count: list[int]) -> None:

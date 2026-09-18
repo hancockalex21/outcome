@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test migrate dev mcp benchmark benchmark-report benchmark-update-golden
+.PHONY: install lint typecheck test security-test migrate dev mcp benchmark benchmark-report benchmark-update-golden
 
 PYTHON ?= python3.12
 VENV ?= .venv
@@ -17,6 +17,9 @@ typecheck:
 
 test:
 	$(BIN)/python -m pytest
+
+security-test:
+	$(BIN)/python -m pytest tests/test_security_hardening.py
 
 migrate:
 	$(BIN)/python -m alembic upgrade head

@@ -71,6 +71,7 @@ make install
 make lint
 make typecheck
 make test
+make security-test
 make migrate
 make dev
 make mcp
