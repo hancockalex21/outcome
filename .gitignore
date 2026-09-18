@@ -10,3 +10,4 @@ build/
 *.egg-info/
 .env
 benchmarks/latest-report.json
+artifacts/

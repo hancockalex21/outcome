@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol, cast
 from uuid import UUID, uuid4
 
@@ -23,7 +24,15 @@ from outcome.authorization import (
     AuthorizationRequestEnvelope,
     CrossTenantAuthorizationAccess,
 )
+from outcome.domain import PolicyDecision, VerificationStatus
+from outcome.execution import (
+    ExecutionAuthorizationRequest,
+    ReceiptConsumptionResult,
+    ReceiptConsumptionService,
+    ReceiptConsumptionStatus,
+)
 from outcome.pricing import CapabilityName
+from outcome.receipts import ReceiptPayload, SignedReceipt
 from outcome.verification import (
     AuthenticatedVerificationContext,
     CrossTenantVerificationAccess,
@@ -40,6 +49,8 @@ from .schemas import (
     OUTCOME_SERVICE_VERSION,
     MCPAuthorizeData,
     MCPAuthorizeRequest,
+    MCPConsumeReceiptData,
+    MCPConsumeReceiptRequest,
     MCPToolResponse,
     MCPVerifyData,
     MCPVerifyRequest,
@@ -53,6 +64,7 @@ MCP_SERVER_DESCRIPTION = (
 TOOL_OUTCOME_VERIFY = "outcome_verify"
 TOOL_OUTCOME_AUTHORIZE = "outcome_authorize"
 TOOL_OUTCOME_CAPABILITIES = "outcome_capabilities"
+TOOL_OUTCOME_EXECUTE_AUTHORIZED = "outcome_execute_authorized"
 
 
 class OutcomeMCPApplication(Protocol):
@@ -72,6 +84,15 @@ class OutcomeMCPApplication(Protocol):
         request: MCPAuthorizeRequest,
         correlation_id: UUID,
     ) -> AuthorizationOrchestrationResult:
+        raise NotImplementedError
+
+    async def consume_receipt(
+        self,
+        *,
+        identity: AgentApiKey,
+        request: MCPConsumeReceiptRequest,
+        correlation_id: UUID,
+    ) -> ReceiptConsumptionResult:
         raise NotImplementedError
 
 
@@ -113,6 +134,21 @@ class OutcomeMCPService:
             call=lambda session, identity, correlation_id: self.dependencies.application_factory(
                 session
             ).authorize(identity=identity, request=request, correlation_id=correlation_id),
+        )
+
+    async def consume_receipt(
+        self,
+        request: MCPConsumeReceiptRequest,
+        *,
+        authorization_header: str | None = None,
+    ) -> MCPToolResponse:
+        return await self._run_tool(
+            tool_name=TOOL_OUTCOME_EXECUTE_AUTHORIZED,
+            required_scope=ApiKeyScope.AUTHORIZE_WRITE,
+            authorization=_select_authorization(authorization_header, request.authorization),
+            call=lambda session, identity, correlation_id: self.dependencies.application_factory(
+                session
+            ).consume_receipt(identity=identity, request=request, correlation_id=correlation_id),
         )
 
     async def _run_tool(
@@ -190,9 +226,11 @@ class OutcomeApplicationServices:
         *,
         verification_orchestrator: VerificationOrchestrator,
         authorization_orchestrator: AuthorizationOrchestrator,
+        receipt_consumption_service: ReceiptConsumptionService,
     ) -> None:
         self.verification_orchestrator = verification_orchestrator
         self.authorization_orchestrator = authorization_orchestrator
+        self.receipt_consumption_service = receipt_consumption_service
 
     async def verify(
         self,
@@ -238,7 +276,7 @@ class OutcomeApplicationServices:
                 material=AuthorizationMaterial(
                     policy_id=request.policy_id,
                     policy_version=request.policy_version,
-                material_action=request.action.material,
+                    material_action=request.action.material,
                     action_schema_version=request.action.action_schema_version,
                     assurance_level=request.requested_assurance,
                     authorization_expires_at=request.authorization_expires_at,
@@ -249,6 +287,25 @@ class OutcomeApplicationServices:
                 correlation_id=correlation_id,
                 ephemeral=request.action.ephemeral,
             )
+        )
+
+    async def consume_receipt(
+        self,
+        *,
+        identity: AgentApiKey,
+        request: MCPConsumeReceiptRequest,
+        correlation_id: UUID,
+    ) -> ReceiptConsumptionResult:
+        return self.receipt_consumption_service.consume(
+            authorization_request=ExecutionAuthorizationRequest(
+                signed_receipt=_parse_signed_receipt(request.signed_receipt),
+                proposed_material=request.material_action,
+                proposed_action_schema_version=request.action_schema_version,
+                authenticated_account_id=identity.account_id,
+                current_timestamp=datetime.now(UTC),
+            ),
+            execution_request_id=request.execution_request_id,
+            correlation_id=correlation_id,
         )
 
 
@@ -304,6 +361,24 @@ def create_mcp_server(dependencies: OutcomeMCPDependencies) -> MCPServer:
     )
     def outcome_capabilities() -> dict[str, object]:
         return OutcomeCapabilities().model_dump(mode="json")
+
+    @server.tool(
+        name=TOOL_OUTCOME_EXECUTE_AUTHORIZED,
+        description=(
+            "Validate and consume a receipt for one exact action without executing it. "
+            "Successful receipts are one-time use."
+        ),
+        structured_output=True,
+    )
+    async def outcome_execute_authorized(
+        request: MCPConsumeReceiptRequest, ctx: Context
+    ) -> dict[str, object]:
+        return (
+            await service.consume_receipt(
+                request,
+                authorization_header=_authorization_from_context(ctx),
+            )
+        ).model_dump(mode="json")
 
     @server.resource(
         "outcome://capabilities",
@@ -364,6 +439,29 @@ def _success_response(result: object) -> MCPToolResponse:
                 idempotent_replay=result.idempotent_replay,
             ),
         )
+    if isinstance(result, ReceiptConsumptionResult):
+        accepted = result.status in {
+            ReceiptConsumptionStatus.CONSUMED,
+            ReceiptConsumptionStatus.IDEMPOTENT_REPLAY,
+        }
+        return MCPToolResponse(
+            ok=accepted,
+            error_code=None if accepted else result.reason_code,
+            reason_codes=(result.reason_code or result.status.value,),
+            data=MCPConsumeReceiptData(
+                status=result.status.value,
+                executable=result.status is ReceiptConsumptionStatus.CONSUMED,
+                consumption_id=result.consumption_id,
+                receipt_id=result.receipt_id,
+                authorization_request_id=result.authorization_request_id,
+                action_hash=result.action_hash,
+                execution_request_id=cast(UUID, result.execution_request_id),
+                validation_status=(
+                    result.validation_status.value if result.validation_status else None
+                ),
+                reason_code=result.reason_code or result.status.value,
+            ),
+        )
     return _error_response("SYSTEM_FAILURE")
 
 
@@ -422,6 +520,33 @@ def _json_mapping(value: object) -> dict[str, object] | None:
     if not isinstance(value, Mapping):
         return None
     return {str(key): item for key, item in value.items()}
+
+
+def _parse_signed_receipt(value: Mapping[str, object]) -> SignedReceipt:
+    payload = value.get("payload")
+    signature = value.get("signature")
+    if not isinstance(payload, Mapping) or not isinstance(signature, str):
+        raise ValueError("malformed signed receipt")
+    verification = payload.get("verification_status")
+    return SignedReceipt(
+        payload=ReceiptPayload(
+            receipt_version=str(payload["receipt_version"]),
+            receipt_id=UUID(str(payload["receipt_id"])),
+            account_id=UUID(str(payload["account_id"])),
+            authorization_request_id=UUID(str(payload["authorization_request_id"])),
+            action_hash=str(payload["action_hash"]),
+            action_schema_version=str(payload["action_schema_version"]),
+            policy_version=str(payload["policy_version"]),
+            policy_decision=PolicyDecision(str(payload["policy_decision"])),
+            verification_status=(
+                VerificationStatus(str(verification)) if verification is not None else None
+            ),
+            issued_at=datetime.fromisoformat(str(payload["issued_at"]).replace("Z", "+00:00")),
+            expires_at=datetime.fromisoformat(str(payload["expires_at"]).replace("Z", "+00:00")),
+            signing_key_id=str(payload["signing_key_id"]),
+        ),
+        signature=signature,
+    )
 
 
 __all__ = [

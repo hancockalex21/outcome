@@ -14,7 +14,7 @@ from outcome.billing import AuthorizationBillingService
 from outcome.core.config import get_settings, validate_startup_config
 from outcome.core.logging import configure_logging
 from outcome.db.metadata import metadata
-from outcome.execution import ExecutionAuthorizationValidator
+from outcome.execution import ExecutionAuthorizationValidator, ReceiptConsumptionService
 from outcome.ledger import LedgerService
 from outcome.policies import PolicyEvaluationService
 from outcome.pricing import (
@@ -95,6 +95,10 @@ def build_application(session: Session) -> OutcomeApplicationServices:
         ledger_service=ledger,
         audit_service=audit,
     )
+    execution_validator = ExecutionAuthorizationValidator(
+        receipt_verifier=verifier,
+        audit_service=audit,
+    )
     return OutcomeApplicationServices(
         verification_orchestrator=VerificationOrchestrator(session, audit_service=audit),
         authorization_orchestrator=AuthorizationOrchestrator(
@@ -102,11 +106,13 @@ def build_application(session: Session) -> OutcomeApplicationServices:
             policy_service=PolicyEvaluationService(session, audit, clock=None),
             verification_orchestrator=VerificationOrchestrator(session, audit_service=audit),
             receipt_service=receipt_service,
-            execution_validator=ExecutionAuthorizationValidator(
-                receipt_verifier=verifier,
-                audit_service=audit,
-            ),
+            execution_validator=execution_validator,
             billing_service=billing_service,
+            audit_service=audit,
+        ),
+        receipt_consumption_service=ReceiptConsumptionService(
+            session,
+            validator=execution_validator,
             audit_service=audit,
         ),
     )

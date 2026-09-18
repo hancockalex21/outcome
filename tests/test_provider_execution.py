@@ -124,7 +124,8 @@ def add_right(
             automated_agent_usage_allowed=True,
             rights_version=f"rights-{billing_mode.value.lower()}-v1",
             effective_at=NOW - timedelta(days=1),
-            expires_at=NOW + timedelta(days=1),
+            # Keep the fixture valid when the suite runs after its reference date.
+            expires_at=NOW + timedelta(days=3650),
             reason_code="RIGHTS_ACTIVE",
             tenant_restrictions={},
             constraints={},

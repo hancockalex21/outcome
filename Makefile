@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test security-test security-check migrate dev mcp mcp-http benchmark benchmark-report benchmark-update-golden production-smoke
+.PHONY: install lint typecheck test security-test security-check migrate dev mcp mcp-http benchmark benchmark-report benchmark-update-golden production-smoke acceptance-local
 
 PYTHON ?= python3.12
 VENV ?= .venv
@@ -47,3 +47,6 @@ benchmark-update-golden:
 
 production-smoke:
 	$(BIN)/python scripts/production_smoke.py
+
+acceptance-local:
+	$(BIN)/python scripts/acceptance_local.py

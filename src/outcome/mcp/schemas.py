@@ -54,6 +54,25 @@ class MCPAuthorizeRequest(MCPAuthenticatedRequest):
     client_reference_id: Annotated[str | None, Field(min_length=1, max_length=255)] = None
 
 
+class MCPConsumeReceiptRequest(MCPAuthenticatedRequest):
+    execution_request_id: UUID
+    signed_receipt: dict[str, JsonValue]
+    action_schema_version: str
+    material_action: dict[str, JsonValue]
+
+
+class MCPConsumeReceiptData(MCPSchema):
+    status: str
+    executable: bool
+    consumption_id: UUID | None
+    receipt_id: UUID | None
+    authorization_request_id: UUID | None
+    action_hash: str | None
+    execution_request_id: UUID
+    validation_status: str | None
+    reason_code: str
+
+
 class MCPErrorCode(str):
     AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
     INSUFFICIENT_SCOPE = "INSUFFICIENT_SCOPE"
@@ -102,25 +121,34 @@ class MCPToolResponse(MCPSchema):
     tool_version: Literal["outcome-mcp-v1"] = "outcome-mcp-v1"
     error_code: str | None = None
     reason_codes: tuple[ReasonCode, ...] = ()
-    data: MCPVerifyData | MCPAuthorizeData | dict[str, JsonValue] | None = None
+    data: (
+        MCPVerifyData
+        | MCPAuthorizeData
+        | MCPConsumeReceiptData
+        | dict[str, JsonValue]
+        | None
+    ) = None
 
 
 class OutcomeCapabilities(MCPSchema):
     service_name: Literal["Outcome"] = "Outcome"
     service_version: str = OUTCOME_SERVICE_VERSION
     mcp_adapter_version: Literal["outcome-mcp-v1"] = "outcome-mcp-v1"
-    supported_tools: tuple[Literal["outcome_verify", "outcome_authorize"], ...] = (
+    supported_tools: tuple[str, ...] = (
         "outcome_verify",
         "outcome_authorize",
+        "outcome_execute_authorized",
     )
     verification_modes: tuple[str, ...] = tuple(mode.value for mode in VerificationMode)
     assurance_levels: tuple[str, ...] = tuple(level.value for level in AssuranceLevel)
     policy_decisions: tuple[str, ...] = tuple(decision.value for decision in PolicyDecision)
     action_schema_version: str = ACTION_SCHEMA_VERSION
-    authentication: Literal["Authorization: Bearer oc_agent_*"] = (
-        "Authorization: Bearer oc_agent_*"
-    )
+    authentication: Literal["Authorization: Bearer oc_agent_*"] = "Authorization: Bearer oc_agent_*"
     receipt_support: bool = True
+    receipt_version: str = "outcome.authorization.receipt.v1"
+    execution_validation: Literal["server-boundary-with-one-time-consumption"] = (
+        "server-boundary-with-one-time-consumption"
+    )
     billing_model: str = "prepaid integer micro-USD; Postgres ledger is authoritative"
     evidence_score_description: str = (
         "0-10000 deterministic evidence-strength score; not a calibrated probability"

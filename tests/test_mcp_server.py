@@ -24,7 +24,11 @@ from outcome.billing import AuthorizationBillingService
 from outcome.db.metadata import metadata
 from outcome.db.models import Account, Receipt
 from outcome.domain import AssuranceLevel, PolicyDecision, VerificationStatus
-from outcome.execution import ExecutionAuthorizationRequest, ExecutionAuthorizationValidator
+from outcome.execution import (
+    ExecutionAuthorizationRequest,
+    ExecutionAuthorizationValidator,
+    ReceiptConsumptionService,
+)
 from outcome.ledger import LedgerService
 from outcome.mcp import create_mcp_server
 from outcome.mcp.schemas import MCP_ADAPTER_VERSION, MCPAuthorizeRequest
@@ -138,6 +142,10 @@ def mcp_server(session: Session, redis_client: Redis):
             audit_service=audit,
             clock=lambda: NOW,
         )
+        execution_validator = ExecutionAuthorizationValidator(
+            receipt_verifier=verifier(),
+            audit_service=audit,
+        )
         return OutcomeApplicationServices(
             verification_orchestrator=VerificationOrchestrator(
                 factory_session,
@@ -152,13 +160,15 @@ def mcp_server(session: Session, redis_client: Redis):
                     clock=lambda: NOW,
                 ),
                 receipt_service=receipt_service,
-                execution_validator=ExecutionAuthorizationValidator(
-                    receipt_verifier=verifier(),
-                    audit_service=audit,
-                ),
+                execution_validator=execution_validator,
                 billing_service=billing,
                 audit_service=audit,
                 clock=lambda: NOW,
+            ),
+            receipt_consumption_service=ReceiptConsumptionService(
+                factory_session,
+                validator=execution_validator,
+                audit_service=audit,
             ),
         )
 
@@ -207,16 +217,22 @@ async def test_mcp_tool_discovery_and_schema(redis_client: Redis) -> None:
         tools = await client.list_tools()
     by_name = {tool.name: tool for tool in tools.tools}
 
-    assert set(by_name) == {"outcome_verify", "outcome_authorize", "outcome_capabilities"}
+    assert set(by_name) == {
+        "outcome_verify",
+        "outcome_authorize",
+        "outcome_capabilities",
+        "outcome_execute_authorized",
+    }
     assert by_name["outcome_verify"].description
     assert by_name["outcome_authorize"].description
     assert "request" in by_name["outcome_verify"].input_schema["properties"]
     assert "request" in by_name["outcome_authorize"].input_schema["properties"]
     async with Client(mcp_server(session, redis_client)) as client:
         capabilities = await client.call_tool("outcome_capabilities", {})
-    assert PolicyDecision.RETRY_HIGHER_ASSURANCE.value in capabilities.structured_content[
-        "policy_decisions"
-    ]
+    assert (
+        PolicyDecision.RETRY_HIGHER_ASSURANCE.value
+        in capabilities.structured_content["policy_decisions"]
+    )
 
 
 @pytest.mark.asyncio
@@ -336,9 +352,9 @@ async def test_remote_mcp_two_tenant_context_does_not_bleed(redis_client: Redis)
 
     assert result_a["ok"] is True
     assert result_b["ok"] is True
-    assert result_a["data"]["verification_request_id"] != result_b["data"][
-        "verification_request_id"
-    ]
+    assert (
+        result_a["data"]["verification_request_id"] != result_b["data"]["verification_request_id"]
+    )
 
 
 @pytest.mark.asyncio
@@ -396,9 +412,10 @@ async def test_mcp_authorize_replay_reuses_receipt_and_billing(redis_client: Red
         first = await client.call_tool("outcome_authorize", {"request": request})
         second = await client.call_tool("outcome_authorize", {"request": request})
 
-    assert first.structured_content["data"]["receipt_id"] == second.structured_content["data"][
-        "receipt_id"
-    ]
+    assert (
+        first.structured_content["data"]["receipt_id"]
+        == second.structured_content["data"]["receipt_id"]
+    )
     assert second.structured_content["data"]["idempotent_replay"] is True
     assert len(session.scalars(select(Receipt)).all()) == 1
 
