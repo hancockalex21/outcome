@@ -23,8 +23,12 @@ class MCPSchema(BaseModel):
 
 
 class MCPAuthenticatedRequest(MCPSchema):
-    authorization: AuthorizationHeader = Field(
-        description="Existing Outcome Authorization header: Bearer oc_agent_..."
+    authorization: AuthorizationHeader | None = Field(
+        default=None,
+        description=(
+            "Existing Outcome Authorization header for stdio clients. Remote HTTP MCP clients "
+            "must send this as the HTTP Authorization header instead."
+        ),
     )
 
 

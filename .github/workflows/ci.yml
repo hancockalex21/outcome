@@ -16,4 +16,11 @@ jobs:
       - run: make install
       - run: make lint
       - run: make typecheck
+      - run: make security-test
       - run: make test
+      - run: make benchmark
+      - run: make security-check
+      - run: make production-smoke
+      - run: docker build -f Dockerfile.api -t outcome-api:ci .
+      - run: docker build -f Dockerfile.mcp -t outcome-mcp:ci .
+      - run: docker build -f Dockerfile.worker -t outcome-worker:ci .

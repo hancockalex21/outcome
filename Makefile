@@ -1,13 +1,14 @@
-.PHONY: install lint typecheck test security-test migrate dev mcp benchmark benchmark-report benchmark-update-golden
+.PHONY: install lint typecheck test security-test security-check migrate dev mcp mcp-http benchmark benchmark-report benchmark-update-golden production-smoke
 
 PYTHON ?= python3.12
 VENV ?= .venv
 BIN := $(VENV)/bin
+PIP_CONSTRAINT ?= requirements.lock
 
 install:
 	$(PYTHON) -m venv $(VENV)
 	$(BIN)/python -m pip install --upgrade pip
-	$(BIN)/python -m pip install -e ".[dev]"
+	$(BIN)/python -m pip install -c $(PIP_CONSTRAINT) -e ".[dev]"
 
 lint:
 	$(BIN)/python -m ruff check .
@@ -21,6 +22,9 @@ test:
 security-test:
 	$(BIN)/python -m pytest tests/test_security_hardening.py
 
+security-check:
+	$(BIN)/python -m pip_audit -r requirements.lock --progress-spinner off
+
 migrate:
 	$(BIN)/python -m alembic upgrade head
 
@@ -30,6 +34,9 @@ dev:
 mcp:
 	$(BIN)/outcome-mcp
 
+mcp-http:
+	$(BIN)/outcome-mcp-http
+
 benchmark:
 	$(BIN)/python -m outcome.benchmarks.cli --output benchmarks/latest-report.json
 
@@ -37,3 +44,6 @@ benchmark-report: benchmark
 
 benchmark-update-golden:
 	$(BIN)/python -m outcome.benchmarks.cli --update-golden --output benchmarks/latest-report.json
+
+production-smoke:
+	$(BIN)/python scripts/production_smoke.py

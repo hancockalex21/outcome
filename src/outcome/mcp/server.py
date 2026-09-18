@@ -7,6 +7,7 @@ from typing import Protocol, cast
 from uuid import UUID, uuid4
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.context import Context
 from pydantic import JsonValue
 from sqlalchemy.orm import Session
 
@@ -84,21 +85,31 @@ class OutcomeMCPService:
     def __init__(self, dependencies: OutcomeMCPDependencies) -> None:
         self.dependencies = dependencies
 
-    async def verify(self, request: MCPVerifyRequest) -> MCPToolResponse:
+    async def verify(
+        self,
+        request: MCPVerifyRequest,
+        *,
+        authorization_header: str | None = None,
+    ) -> MCPToolResponse:
         return await self._run_tool(
             tool_name=TOOL_OUTCOME_VERIFY,
             required_scope=ApiKeyScope.VERIFY_WRITE,
-            authorization=request.authorization,
+            authorization=_select_authorization(authorization_header, request.authorization),
             call=lambda session, identity, correlation_id: self.dependencies.application_factory(
                 session
             ).verify(identity=identity, request=request, correlation_id=correlation_id),
         )
 
-    async def authorize(self, request: MCPAuthorizeRequest) -> MCPToolResponse:
+    async def authorize(
+        self,
+        request: MCPAuthorizeRequest,
+        *,
+        authorization_header: str | None = None,
+    ) -> MCPToolResponse:
         return await self._run_tool(
             tool_name=TOOL_OUTCOME_AUTHORIZE,
             required_scope=ApiKeyScope.AUTHORIZE_WRITE,
-            authorization=request.authorization,
+            authorization=_select_authorization(authorization_header, request.authorization),
             call=lambda session, identity, correlation_id: self.dependencies.application_factory(
                 session
             ).authorize(identity=identity, request=request, correlation_id=correlation_id),
@@ -109,7 +120,7 @@ class OutcomeMCPService:
         *,
         tool_name: str,
         required_scope: ApiKeyScope,
-        authorization: str,
+        authorization: str | None,
         call: Callable[[Session, AgentApiKey, UUID], object],
     ) -> MCPToolResponse:
         started = time.monotonic()
@@ -262,8 +273,13 @@ def create_mcp_server(dependencies: OutcomeMCPDependencies) -> MCPServer:
         ),
         structured_output=True,
     )
-    async def outcome_verify(request: MCPVerifyRequest) -> dict[str, object]:
-        return (await service.verify(request)).model_dump(mode="json")
+    async def outcome_verify(request: MCPVerifyRequest, ctx: Context) -> dict[str, object]:
+        return (
+            await service.verify(
+                request,
+                authorization_header=_authorization_from_context(ctx),
+            )
+        ).model_dump(mode="json")
 
     @server.tool(
         name=TOOL_OUTCOME_AUTHORIZE,
@@ -273,8 +289,13 @@ def create_mcp_server(dependencies: OutcomeMCPDependencies) -> MCPServer:
         ),
         structured_output=True,
     )
-    async def outcome_authorize(request: MCPAuthorizeRequest) -> dict[str, object]:
-        return (await service.authorize(request)).model_dump(mode="json")
+    async def outcome_authorize(request: MCPAuthorizeRequest, ctx: Context) -> dict[str, object]:
+        return (
+            await service.authorize(
+                request,
+                authorization_header=_authorization_from_context(ctx),
+            )
+        ).model_dump(mode="json")
 
     @server.tool(
         name=TOOL_OUTCOME_CAPABILITIES,
@@ -354,6 +375,20 @@ def _auth_error_code(error: ApiKeyAuthError) -> str:
     if error is ApiKeyAuthError.MISSING_SCOPE:
         return "INSUFFICIENT_SCOPE"
     return "AUTHENTICATION_FAILED"
+
+
+def _select_authorization(header_value: str | None, request_value: str | None) -> str | None:
+    return header_value or request_value
+
+
+def _authorization_from_context(ctx: Context) -> str | None:
+    headers = ctx.headers
+    if not headers:
+        return None
+    for key, value in headers.items():
+        if key.lower() == "authorization":
+            return value
+    return None
 
 
 def _audit_mcp(

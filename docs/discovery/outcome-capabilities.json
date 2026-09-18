@@ -2,7 +2,7 @@
   "service_name": "Outcome",
   "service_version": "0.1.0",
   "mcp_adapter_version": "outcome-mcp-v1",
-  "supported_interfaces": ["mcp-stdio"],
+  "supported_interfaces": ["mcp-stdio", "mcp-streamable-http"],
   "supported_tools": ["outcome_verify", "outcome_authorize"],
   "optional_tools": ["outcome_capabilities"],
   "authentication": {

@@ -10,10 +10,40 @@ services:
       OUTCOME_API_PORT: 8000
       OUTCOME_DATABASE_URL: postgresql+asyncpg://outcome@postgres:5432/outcome
       OUTCOME_REDIS_URL: redis://redis:6379/0
+      OUTCOME_RESERVATION_TTL_SECONDS: 900
+      OUTCOME_MAX_BILLABLE_EXECUTION_WINDOW_SECONDS: 600
+      OUTCOME_RESERVATION_TTL_SAFETY_MARGIN_SECONDS: 120
       OUTCOME_OTEL_SERVICE_NAME: outcome-api
       OUTCOME_OTEL_EXPORTER_OTLP_ENDPOINT: ""
     ports:
       - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    environment:
+      OUTCOME_ENV: local
+      OUTCOME_LOG_LEVEL: info
+      OUTCOME_MCP_HTTP_HOST: 0.0.0.0
+      OUTCOME_MCP_HTTP_PORT: 8001
+      OUTCOME_MCP_HTTP_PATH: /mcp
+      OUTCOME_MCP_ALLOWED_HOSTS: localhost,127.0.0.1
+      OUTCOME_MCP_DATABASE_URL: sqlite:////app/outcome-mcp-local.db
+      OUTCOME_DATABASE_URL: postgresql+asyncpg://outcome@postgres:5432/outcome
+      OUTCOME_REDIS_URL: redis://redis:6379/0
+      OUTCOME_MCP_RECEIPT_SIGNING_KEY_ID: outcome-mcp-dev-key
+      OUTCOME_MCP_RECEIPT_PRIVATE_KEY_B64: ""
+      OUTCOME_RESERVATION_TTL_SECONDS: 900
+      OUTCOME_MAX_BILLABLE_EXECUTION_WINDOW_SECONDS: 600
+      OUTCOME_RESERVATION_TTL_SAFETY_MARGIN_SECONDS: 120
+      OUTCOME_OTEL_SERVICE_NAME: outcome-mcp
+      OUTCOME_OTEL_EXPORTER_OTLP_ENDPOINT: ""
+    ports:
+      - "8001:8001"
     depends_on:
       - postgres
       - redis
@@ -27,6 +57,10 @@ services:
       OUTCOME_LOG_LEVEL: info
       OUTCOME_DATABASE_URL: postgresql+asyncpg://outcome@postgres:5432/outcome
       OUTCOME_REDIS_URL: redis://redis:6379/0
+      OUTCOME_WORKER_SECRET_RESOLVER_BACKEND: development
+      OUTCOME_RESERVATION_TTL_SECONDS: 900
+      OUTCOME_MAX_BILLABLE_EXECUTION_WINDOW_SECONDS: 600
+      OUTCOME_RESERVATION_TTL_SAFETY_MARGIN_SECONDS: 120
       OUTCOME_OTEL_SERVICE_NAME: outcome-worker
       OUTCOME_OTEL_EXPORTER_OTLP_ENDPOINT: ""
     depends_on:

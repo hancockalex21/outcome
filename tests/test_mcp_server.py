@@ -1,12 +1,14 @@
-from __future__ import annotations
-
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import httpx2
 import pytest
 from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import ValidationError
 from redis import Redis
 from redis.exceptions import RedisError
@@ -49,6 +51,8 @@ from tests.test_authorization_orchestrator import (
 from tests.test_receipt_service import signer, verifier
 
 NOW = datetime(2026, 9, 15, 12, 0, 0, tzinfo=UTC)
+SECOND_ACCOUNT_ID = UUID("22222222-2222-4222-8222-222222222222")
+SECOND_AGENT_ID = UUID("33333333-3333-4333-8333-333333333333")
 
 
 @pytest.fixture()
@@ -76,10 +80,15 @@ def build_session() -> Session:
     return session
 
 
-def make_key(session: Session, *scopes: ApiKeyScope) -> str:
+def make_key(
+    session: Session,
+    *scopes: ApiKeyScope,
+    account_id: UUID = ACCOUNT_ID,
+    agent_id: UUID = AGENT_ID,
+) -> str:
     result = AgentApiKeyAuthenticator(session).create_development_key(
-        account_id=ACCOUNT_ID,
-        agent_id=AGENT_ID,
+        account_id=account_id,
+        agent_id=agent_id,
         scopes=set(scopes),
     )
     session.commit()
@@ -240,6 +249,96 @@ async def test_mcp_verify_authenticated_invocation(redis_client: Redis) -> None:
         response["data"]["evidence_score_basis_points"],
         int,
     )
+
+
+@pytest.mark.asyncio
+async def test_remote_mcp_uses_http_authorization_header(redis_client: Redis) -> None:
+    session = build_session()
+    key = make_key(session, ApiKeyScope.VERIFY_WRITE)
+    app = mcp_server(session, redis_client).streamable_http_app(
+        streamable_http_path="/mcp",
+        stateless_http=True,
+        max_request_body_size=1_048_576,
+        transport_security=TransportSecuritySettings(allowed_hosts=["localhost"]),
+    )
+    transport = httpx2.ASGITransport(app=app)
+    async with app.router.lifespan_context(app):
+        async with httpx2.AsyncClient(
+            transport=transport,
+            base_url="http://localhost",
+            headers={"Authorization": f"Bearer {key}"},
+        ) as http_client:
+            async with Client(
+                streamable_http_client("http://localhost/mcp", http_client=http_client)
+            ) as client:
+                tools = await client.list_tools()
+                result = await client.call_tool(
+                    "outcome_verify",
+                    {
+                        "request": {
+                            "idempotency_key": "remote-verify-key",
+                            "claim": "merchant exists",
+                            "subject": "merchant-a",
+                        }
+                    },
+                )
+
+    assert {tool.name for tool in tools.tools} >= {"outcome_verify", "outcome_authorize"}
+    assert result.structured_content["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_remote_mcp_two_tenant_context_does_not_bleed(redis_client: Redis) -> None:
+    session = build_session()
+    session.add(Account(id=SECOND_ACCOUNT_ID, display_name="MCP B", status="active"))
+    session.commit()
+    key_a = make_key(session, ApiKeyScope.VERIFY_WRITE)
+    key_b = make_key(
+        session,
+        ApiKeyScope.VERIFY_WRITE,
+        account_id=SECOND_ACCOUNT_ID,
+        agent_id=SECOND_AGENT_ID,
+    )
+    app = mcp_server(session, redis_client).streamable_http_app(
+        streamable_http_path="/mcp",
+        stateless_http=True,
+        max_request_body_size=1_048_576,
+        transport_security=TransportSecuritySettings(allowed_hosts=["localhost"]),
+    )
+
+    async def call_verify(key: str, idempotency_key: str) -> dict[str, object]:
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
+            transport=transport,
+            base_url="http://localhost",
+            headers={"Authorization": f"Bearer {key}"},
+        ) as http_client:
+            async with Client(
+                streamable_http_client("http://localhost/mcp", http_client=http_client)
+            ) as client:
+                result = await client.call_tool(
+                    "outcome_verify",
+                    {
+                        "request": {
+                            "idempotency_key": idempotency_key,
+                            "claim": "merchant exists",
+                            "subject": "merchant-a",
+                        }
+                    },
+                )
+                return result.structured_content
+
+    async with app.router.lifespan_context(app):
+        result_a, result_b = await asyncio.gather(
+            call_verify(key_a, "tenant-a-verify"),
+            call_verify(key_b, "tenant-b-verify"),
+        )
+
+    assert result_a["ok"] is True
+    assert result_b["ok"] is True
+    assert result_a["data"]["verification_request_id"] != result_b["data"][
+        "verification_request_id"
+    ]
 
 
 @pytest.mark.asyncio

@@ -5,12 +5,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements.lock ./
 COPY src ./src
 COPY alembic.ini ./
 COPY migrations ./migrations
 
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir -c requirements.lock . \
+    && groupadd --system outcome \
+    && useradd --system --gid outcome --home-dir /app outcome \
+    && chown -R outcome:outcome /app
+
+USER outcome
 
 CMD ["outcome-worker"]

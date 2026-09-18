@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir --upgrade pip \
     && useradd --system --gid outcome --home-dir /app outcome \
     && chown -R outcome:outcome /app
 
-EXPOSE 8000
+EXPOSE 8001
 
 USER outcome
 
-CMD ["outcome-api"]
+CMD ["outcome-mcp-http"]

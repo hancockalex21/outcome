@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from outcome.audit import AuditService
 from outcome.authorization import AuthorizationOrchestrator
 from outcome.billing import AuthorizationBillingService
-from outcome.core.config import get_settings
+from outcome.core.config import get_settings, validate_startup_config
 from outcome.core.logging import configure_logging
 from outcome.db.metadata import metadata
 from outcome.execution import ExecutionAuthorizationValidator
@@ -115,6 +115,7 @@ def build_application(session: Session) -> OutcomeApplicationServices:
 def run() -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
+    validate_startup_config(settings, process_role="mcp")
     server = create_mcp_server(
         OutcomeMCPDependencies(
             session_factory=build_session_factory(),
@@ -139,4 +140,3 @@ def _receipt_signer() -> Ed25519ReceiptSigner:
 
 
 __all__ = ["build_application", "build_session_factory", "run"]
-
