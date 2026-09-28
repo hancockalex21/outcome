@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import sys
 import time
@@ -25,6 +26,9 @@ REQUIRED_TOOLS = {
 DECISIONS = {"ALLOW", "RETRY_HIGHER_ASSURANCE", "ESCALATE", "BLOCK"}
 ACTION_SCHEMA_VERSION = "action.material.v1"
 RECEIPT_VERSION = "outcome.authorization.receipt.v1"
+OPERATION_TIMEOUT_SECONDS = 30.0
+DEFAULT_DISCOVERY_TIMEOUT_SECONDS = 30.0
+DISCOVERY_RETRY_DELAY_SECONDS = 2.0
 
 
 class AcceptanceFailure(RuntimeError):
@@ -33,6 +37,24 @@ class AcceptanceFailure(RuntimeError):
         self.stage = stage
         self.reason = reason
         self.hint = hint
+
+
+class DiscoveryAttemptFailure(RuntimeError):
+    def __init__(self, substage: str, reason: str, retryable: bool) -> None:
+        super().__init__(reason)
+        self.substage = substage
+        self.reason = reason
+        self.retryable = retryable
+
+
+def _positive_timeout(value: str) -> float:
+    try:
+        timeout = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive numeric value") from exc
+    if not math.isfinite(timeout) or not timeout > 0:
+        raise argparse.ArgumentTypeError("must be a positive numeric value")
+    return timeout
 
 
 def _config() -> argparse.Namespace:
@@ -45,6 +67,15 @@ def _config() -> argparse.Namespace:
         default=os.getenv("OUTCOME_ACCEPTANCE_VERIFICATION_RESULT_ID"),
     )
     parser.add_argument("--environment", default=os.getenv("OUTCOME_ACCEPTANCE_ENV", "remote"))
+    parser.add_argument(
+        "--discovery-timeout-seconds",
+        type=_positive_timeout,
+        default=os.getenv(
+            "OUTCOME_ACCEPTANCE_DISCOVERY_TIMEOUT_SECONDS",
+            str(DEFAULT_DISCOVERY_TIMEOUT_SECONDS),
+        ),
+        help="timeout for MCP initialization and discovery only",
+    )
     parser.add_argument(
         "--report",
         default=os.getenv("OUTCOME_ACCEPTANCE_REPORT", "artifacts/acceptance-report.json"),
@@ -98,9 +129,14 @@ def _authorization_request(args: argparse.Namespace, key: str) -> dict[str, Any]
     }
 
 
-async def _session(url: str, api_key: str | None):
+async def _session(
+    url: str,
+    api_key: str | None,
+    *,
+    timeout_seconds: float = OPERATION_TIMEOUT_SECONDS,
+):
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    http_client = httpx.AsyncClient(headers=headers, timeout=30)
+    http_client = httpx.AsyncClient(headers=headers, timeout=timeout_seconds)
     transport = streamable_http_client(url, http_client=http_client)
     return http_client, Client(transport)
 
@@ -118,6 +154,80 @@ async def _call(
                     tool, "MALFORMED_TOOL_RESPONSE", "Inspect MCP adapter output"
                 )
             return value
+
+
+def _nested_exceptions(exc: BaseException) -> list[BaseException]:
+    if isinstance(exc, BaseExceptionGroup):
+        return [nested for child in exc.exceptions for nested in _nested_exceptions(child)]
+    return [exc]
+
+
+def _discovery_failure(exc: Exception, substage: str) -> DiscoveryAttemptFailure:
+    nested = _nested_exceptions(exc)
+    if any(isinstance(item, (TimeoutError, httpx.TimeoutException)) for item in nested):
+        return DiscoveryAttemptFailure(substage, "DISCOVERY_TIMEOUT", True)
+    if any(
+        isinstance(item, (ConnectionError, httpx.NetworkError, httpx.RemoteProtocolError))
+        for item in nested
+    ):
+        return DiscoveryAttemptFailure(substage, "DISCOVERY_CONNECTION_FAILURE", True)
+    return DiscoveryAttemptFailure(substage, "DISCOVERY_PROTOCOL_FAILURE", False)
+
+
+async def _discovery_attempt(
+    url: str,
+    api_key: str,
+    timeout_seconds: float,
+) -> tuple[set[str], object]:
+    substage = "initialization"
+    try:
+        http_client, client = await _session(
+            url,
+            api_key,
+            timeout_seconds=timeout_seconds,
+        )
+        async with http_client:
+            async with client:
+                substage = "list_tools"
+                listed = await client.list_tools()
+                tool_names = {tool.name for tool in listed.tools}
+                substage = "outcome_capabilities"
+                capability_result = await client.call_tool("outcome_capabilities", {})
+                return tool_names, capability_result.structured_content
+    except AcceptanceFailure:
+        raise
+    except Exception as exc:
+        raise _discovery_failure(exc, substage) from None
+
+
+async def _discover(
+    url: str,
+    api_key: str,
+    timeout_seconds: float,
+) -> tuple[set[str], object, int]:
+    for attempt in range(2):
+        try:
+            tool_names, capabilities = await _discovery_attempt(
+                url,
+                api_key,
+                timeout_seconds,
+            )
+            return tool_names, capabilities, attempt
+        except DiscoveryAttemptFailure as exc:
+            if exc.retryable and attempt == 0:
+                await asyncio.sleep(DISCOVERY_RETRY_DELAY_SECONDS)
+                continue
+            hint = (
+                "Check endpoint availability and cold-start latency"
+                if exc.retryable
+                else "Inspect MCP discovery protocol compatibility"
+            )
+            raise AcceptanceFailure(
+                f"discovery.{exc.substage}",
+                exc.reason,
+                hint,
+            ) from None
+    raise AssertionError("unreachable")
 
 
 def _assert(condition: bool, stage: str, reason: str, hint: str) -> None:
@@ -139,19 +249,17 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     try:
         stage_time = time.monotonic()
-        http_client, client = await _session(args.mcp_url, args.api_key)
-        async with http_client:
-            async with client:
-                listed = await client.list_tools()
-                tool_names = {tool.name for tool in listed.tools}
-                _assert(
-                    REQUIRED_TOOLS <= tool_names,
-                    "discovery",
-                    "REQUIRED_TOOL_MISSING",
-                    "Deploy a compatible Outcome MCP adapter",
-                )
-                capability_result = await client.call_tool("outcome_capabilities", {})
-                capabilities = capability_result.structured_content
+        tool_names, capabilities, discovery_retries = await _discover(
+            args.mcp_url,
+            args.api_key,
+            args.discovery_timeout_seconds,
+        )
+        _assert(
+            REQUIRED_TOOLS <= tool_names,
+            "discovery.list_tools",
+            "REQUIRED_TOOL_MISSING",
+            "Deploy a compatible Outcome MCP adapter",
+        )
         _assert(
             isinstance(capabilities, dict),
             "discovery",
@@ -210,6 +318,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             "receipt": capabilities.get("receipt_version"),
         }
         report["discovered_tools"] = sorted(tool_names)
+        report["stages"]["discovery"] = {"retries": discovery_retries}
 
         auth_request = _authorization_request(args, run_id)
         missing = await _call(args.mcp_url, None, "outcome_authorize", auth_request)

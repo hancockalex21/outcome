@@ -52,11 +52,14 @@ OUTCOME_API_KEY=oc_agent_REDACTED \
 OUTCOME_ACCEPTANCE_POLICY_ID=... \
 OUTCOME_ACCEPTANCE_VERIFICATION_RESULT_ID=... \
 OUTCOME_ACCEPTANCE_ENV=controlled-beta \
+OUTCOME_ACCEPTANCE_DISCOVERY_TIMEOUT_SECONDS=90 \
 OUTCOME_ACCEPTANCE_REPORT=artifacts/beta-acceptance.json \
 .venv/bin/python -m tools.acceptance.outcome_acceptance
 ```
 
 Do not put secrets in shell history in a real environment; inject them from the operator secret mechanism.
+
+The normal discovery/initialization timeout is 30 seconds. Render free-tier controlled-beta services can take 50 seconds or more to wake, so use `OUTCOME_ACCEPTANCE_DISCOVERY_TIMEOUT_SECONDS=90` there. The value must be a positive number. Initialization and discovery retry the entire discovery session at most once, after a two-second delay, and only for a transport timeout or connection-level failure. MCP protocol responses, authentication and compatibility failures are not retried. Authorization, receipt validation/consumption, and every other state-changing operation always remain single-attempt at the normal 30-second operation timeout.
 
 ## Report and pass gate
 
