@@ -22,7 +22,7 @@ The local topology uses Postgres and Redis. The MCP process uses a deterministic
 
 ## Fixture provisioning
 
-`scripts/acceptance_operator.py` is an operator-only command, separate from the black-box client. It creates a dedicated account, a narrow published policy, one deterministic VERIFIED result, a normal scoped API key, and five USD-equivalent units of prepaid test funding through `LedgerService.fund_account`. Funding uses double-entry entries and an idempotency key prefixed `TEST_ACCEPTANCE`; it never mutates a balance directly and never calls Stripe.
+`scripts/acceptance_operator.py` is an operator-only command, separate from the black-box client. It creates a dedicated account, a narrow published policy, one deterministic VERIFIED result, a normal scoped API key, and exactly 1,000,000 micro-USD of prepaid test funding through `LedgerService.fund_account`. Funding uses double-entry entries and an idempotency key prefixed `TEST_ACCEPTANCE`; it never mutates a balance directly and never calls Stripe. The command fails closed if its fixed controlled-beta account and agent already have a credential, so it cannot be used to silently issue a second key.
 
 The policy allows only `controlled_beta_test` / `authorize`, destination `synthetic-resource`, zero action amount, STANDARD assurance, VERIFIED status, and score ≥9000. There is no always-allow branch.
 

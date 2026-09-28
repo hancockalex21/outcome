@@ -6,14 +6,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from outcome.actions import ACTION_SCHEMA_VERSION
 from outcome.audit import AuditService
 from outcome.auth import AgentApiKeyAuthenticator, ApiKeyScope
 from outcome.db.metadata import metadata
-from outcome.db.models import Account, VerificationRequest, VerificationResult
+from outcome.db.models import Account, AgentCredential, VerificationRequest, VerificationResult
 from outcome.domain import AssuranceLevel, PolicyDecision, VerificationMode, VerificationStatus
 from outcome.ledger import LedgerService
 from outcome.policies import (
@@ -28,6 +28,11 @@ AGENT_ID = UUID("32000000-0000-4000-8000-000000000002")
 POLICY_ID = UUID("32000000-0000-4000-8000-000000000003")
 VERIFICATION_REQUEST_ID = UUID("32000000-0000-4000-8000-000000000004")
 VERIFICATION_RESULT_ID = UUID("32000000-0000-4000-8000-000000000005")
+FUNDING_AMOUNT_MICRO_USD = 1_000_000
+
+
+class ControlledBetaCredentialAlreadyProvisioned(RuntimeError):
+    pass
 
 
 def main() -> None:
@@ -40,6 +45,16 @@ def main() -> None:
     metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
     try:
+        existing_credential = session.scalar(
+            select(AgentCredential.id).where(
+                AgentCredential.account_id == ACCOUNT_ID,
+                AgentCredential.agent_id == AGENT_ID,
+            )
+        )
+        if existing_credential is not None:
+            raise ControlledBetaCredentialAlreadyProvisioned(
+                "controlled-beta credential has already been provisioned"
+            )
         if session.get(Account, ACCOUNT_ID) is None:
             session.add(
                 Account(id=ACCOUNT_ID, display_name="Controlled beta acceptance", status="active")
@@ -101,7 +116,7 @@ def main() -> None:
             )
         LedgerService(session).fund_account(
             account_id=ACCOUNT_ID,
-            amount_micro_usd=5_000_000,
+            amount_micro_usd=FUNDING_AMOUNT_MICRO_USD,
             idempotency_key="TEST_ACCEPTANCE:controlled-beta-funding-v1",
             correlation_id=uuid4(),
         )
