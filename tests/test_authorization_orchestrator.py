@@ -46,6 +46,7 @@ from outcome.execution import (
 )
 from outcome.policies import (
     DeterministicPolicy,
+    PolicyEvaluationReason,
     PolicyEvaluationRequest,
     PolicyEvaluationResult,
     PolicyEvaluationService,
@@ -270,6 +271,76 @@ def test_complete_internal_allow_authorization_issues_one_receipt() -> None:
     assert receipts[0].receipt_id == result.receipt_id
     assert receipts[0].action_hash == result.action_hash
     assert result.provenance["policy_hash"] == result.policy_hash
+
+
+def test_destination_constrained_authorization_without_destination_issues_no_receipt() -> None:
+    session = build_session()
+    add_policy(session)
+    action = material_action()
+    action.pop("destination")
+
+    result = authorize(session, request=envelope(action=action))
+
+    assert result.decision is PolicyDecision.BLOCK
+    assert PolicyEvaluationReason.DESTINATION_NOT_ALLOWED.value in result.reason_codes
+    assert result.receipt_id is None
+    assert result.signed_receipt is None
+    assert len(session.scalars(select(Receipt)).all()) == 0
+
+
+@pytest.mark.parametrize(
+    ("score", "decision"),
+    [
+        (None, PolicyDecision.BLOCK),
+        (5_000, PolicyDecision.RETRY_HIGHER_ASSURANCE),
+    ],
+)
+def test_score_only_policy_missing_or_insufficient_verification_issues_no_receipt(
+    score: int | None,
+    decision: PolicyDecision,
+) -> None:
+    session = build_session()
+    add_policy(
+        session,
+        DeterministicPolicy(
+            policy_id=POLICY_ID,
+            account_id=ACCOUNT_ID,
+            name="score-only-policy",
+            version=1,
+            enabled=True,
+            action_schema_version=ACTION_SCHEMA_VERSION,
+            rules=(
+                PolicyRule(
+                    rule_id="score-only",
+                    effect=PolicyRuleEffect.ALLOW,
+                    action_types=("purchase",),
+                    capabilities=("authorize",),
+                    minimum_evidence_score=9_000,
+                ),
+            ),
+            effective_at=NOW,
+        ),
+    )
+    if score is None:
+        request = envelope()
+        request = replace(
+            request,
+            material=replace(
+                request.material,
+                verification_required=False,
+                verification_result_id=None,
+            ),
+        )
+    else:
+        verification_result_id = add_verification_result(session, score=score)
+        request = envelope(verification_result_id=verification_result_id)
+
+    result = service(session).authorize(request)
+
+    assert result.decision is decision
+    assert result.receipt_id is None
+    assert result.signed_receipt is None
+    assert len(session.scalars(select(Receipt)).all()) == 0
 
 
 def test_emitted_receipt_self_verifies_and_passes_execution_validator() -> None:

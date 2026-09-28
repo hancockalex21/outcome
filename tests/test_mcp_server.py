@@ -33,7 +33,12 @@ from outcome.ledger import LedgerService
 from outcome.mcp import create_mcp_server
 from outcome.mcp.schemas import MCP_ADAPTER_VERSION, MCPAuthorizeRequest
 from outcome.mcp.server import OutcomeApplicationServices, OutcomeMCPDependencies
-from outcome.policies import PolicyEvaluationService
+from outcome.policies import (
+    DeterministicPolicy,
+    PolicyEvaluationService,
+    PolicyRule,
+    PolicyRuleEffect,
+)
 from outcome.pricing import (
     BillingMode,
     CapabilityName,
@@ -397,6 +402,74 @@ async def test_agent_style_authorize_returns_signed_receipt(redis_client: Redis)
         correlation_id=uuid4(),
     )
     assert execution.executable is True
+
+
+@pytest.mark.asyncio
+async def test_mcp_authorize_blocks_missing_policy_constrained_destination(
+    redis_client: Redis,
+) -> None:
+    session = build_session()
+    add_policy(session)
+    verification_result_id = add_verification_result(session)
+    fund_account(session)
+    key = make_key(session, ApiKeyScope.AUTHORIZE_WRITE)
+    request = authorize_request(f"Bearer {key}", verification_result_id)
+    request["action"]["material"].pop("destination")
+
+    async with Client(mcp_server(session, redis_client)) as client:
+        result = await client.call_tool("outcome_authorize", {"request": request})
+
+    response = result.structured_content
+    assert response["ok"] is True
+    assert response["data"]["decision"] == PolicyDecision.BLOCK.value
+    assert response["data"]["receipt_id"] is None
+    assert response["data"]["signed_receipt"] is None
+    assert "DESTINATION_NOT_ALLOWED" in response["data"]["reason_codes"]
+    assert len(session.scalars(select(Receipt)).all()) == 0
+
+
+@pytest.mark.asyncio
+async def test_mcp_authorize_score_only_policy_requires_verification(
+    redis_client: Redis,
+) -> None:
+    session = build_session()
+    add_policy(
+        session,
+        DeterministicPolicy(
+            policy_id=POLICY_ID,
+            account_id=ACCOUNT_ID,
+            name="score-only-policy",
+            version=1,
+            enabled=True,
+            action_schema_version=ACTION_SCHEMA_VERSION,
+            rules=(
+                PolicyRule(
+                    rule_id="score-only",
+                    effect=PolicyRuleEffect.ALLOW,
+                    action_types=("purchase",),
+                    capabilities=("authorize",),
+                    minimum_evidence_score=9_000,
+                ),
+            ),
+            effective_at=NOW,
+        ),
+    )
+    fund_account(session)
+    key = make_key(session, ApiKeyScope.AUTHORIZE_WRITE)
+    request = authorize_request(f"Bearer {key}", uuid4())
+    request["verification_required"] = False
+    request["verification_result_id"] = None
+
+    async with Client(mcp_server(session, redis_client)) as client:
+        result = await client.call_tool("outcome_authorize", {"request": request})
+
+    response = result.structured_content
+    assert response["ok"] is True
+    assert response["data"]["decision"] == PolicyDecision.BLOCK.value
+    assert response["data"]["receipt_id"] is None
+    assert response["data"]["signed_receipt"] is None
+    assert "VERIFICATION_REQUIRED" in response["data"]["reason_codes"]
+    assert len(session.scalars(select(Receipt)).all()) == 0
 
 
 @pytest.mark.asyncio

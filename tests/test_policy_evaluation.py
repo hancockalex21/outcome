@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from outcome.actions.material import ACTION_SCHEMA_VERSION
 from outcome.audit import AuditService
-from outcome.db.models import Account, AuditEvent, VerificationRequest, VerificationResult
+from outcome.db.models import Account, AuditEvent, Policy, VerificationRequest, VerificationResult
 from outcome.domain import AssuranceLevel, PolicyDecision, VerificationStatus
 from outcome.policies import (
     CrossTenantPolicyAccess,
@@ -22,6 +22,7 @@ from outcome.policies import (
     PolicyVerificationReference,
     PublishedPolicyImmutable,
     canonical_policy_hash,
+    policy_from_model,
     validate_policy,
     verification_reference_from_model,
 )
@@ -93,6 +94,34 @@ def setup() -> tuple:
     service.publish(policy())
     session.commit()
     return session, service
+
+
+def setup_with_rule(rule: PolicyRule) -> tuple:
+    session = build_session()
+    account = session.scalar(select(Account))
+    assert account is not None
+    account.id = ACCOUNT_ID
+    service = PolicyEvaluationService(session, AuditService(session), clock=lambda: NOW)
+    service.publish(policy(rules=(rule,)))
+    session.commit()
+    return session, service
+
+
+def policy_request(
+    *,
+    verification_ref: PolicyVerificationReference | None,
+    assurance: AssuranceLevel = AssuranceLevel.STANDARD,
+) -> PolicyEvaluationRequest:
+    return PolicyEvaluationRequest(
+        account_id=ACCOUNT_ID,
+        policy_id=POLICY_ID,
+        policy_version=1,
+        material_action=material(),
+        action_schema_version=ACTION_SCHEMA_VERSION,
+        assurance_level=assurance,
+        verification=verification_ref,
+        evaluated_at=NOW,
+    )
 
 
 def verification(
@@ -277,6 +306,137 @@ def test_provider_failure_escalates_and_system_failure_blocks() -> None:
     assert system.reason_codes == (PolicyEvaluationReason.SYSTEM_FAILURE,)
 
 
+def test_score_only_policy_requires_verification_and_enforces_score() -> None:
+    session, service = setup_with_rule(
+        PolicyRule(
+            rule_id="score-only",
+            effect=PolicyRuleEffect.ALLOW,
+            action_types=("purchase",),
+            capabilities=("authorize",),
+            minimum_evidence_score=9_000,
+        )
+    )
+
+    missing = evaluate(service, policy_request(verification_ref=None))
+    insufficient = evaluate(service, policy_request(verification_ref=verification(score=5_000)))
+    no_score = evaluate(service, policy_request(verification_ref=verification(score=None)))
+    sufficient = evaluate(service, policy_request(verification_ref=verification(score=9_500)))
+
+    assert missing.decision is PolicyDecision.BLOCK
+    assert missing.reason_codes == (PolicyEvaluationReason.VERIFICATION_REQUIRED,)
+    assert insufficient.decision is PolicyDecision.RETRY_HIGHER_ASSURANCE
+    assert insufficient.reason_codes == (PolicyEvaluationReason.VERIFICATION_INCONCLUSIVE,)
+    assert no_score.decision is PolicyDecision.RETRY_HIGHER_ASSURANCE
+    assert no_score.reason_codes == (PolicyEvaluationReason.VERIFICATION_INCONCLUSIVE,)
+    assert sufficient.decision is PolicyDecision.ALLOW
+
+    stored = session.get(Policy, POLICY_ID)
+    assert stored is not None
+    restored = policy_from_model(stored)
+    assert restored.rules[0].required_verification_status is None
+    assert restored.rules[0].minimum_evidence_score == 9_000
+    validate_policy(restored)
+
+
+@pytest.mark.parametrize(
+    ("status", "decision", "reason"),
+    [
+        (
+            VerificationStatus.SYSTEM_FAILURE,
+            PolicyDecision.BLOCK,
+            PolicyEvaluationReason.SYSTEM_FAILURE,
+        ),
+        (
+            VerificationStatus.CONTRADICTED,
+            PolicyDecision.BLOCK,
+            PolicyEvaluationReason.VERIFICATION_CONTRADICTED,
+        ),
+        (
+            VerificationStatus.INCONCLUSIVE,
+            PolicyDecision.RETRY_HIGHER_ASSURANCE,
+            PolicyEvaluationReason.VERIFICATION_INCONCLUSIVE,
+        ),
+        (
+            VerificationStatus.PROVIDER_FAILED,
+            PolicyDecision.ESCALATE,
+            PolicyEvaluationReason.PROVIDER_FAILURE,
+        ),
+    ],
+)
+def test_score_only_policy_preserves_verification_failure_semantics(
+    status: VerificationStatus,
+    decision: PolicyDecision,
+    reason: PolicyEvaluationReason,
+) -> None:
+    _session, service = setup_with_rule(
+        PolicyRule(
+            rule_id="score-only",
+            effect=PolicyRuleEffect.ALLOW,
+            action_types=("purchase",),
+            capabilities=("authorize",),
+            minimum_evidence_score=9_000,
+        )
+    )
+
+    result = evaluate(
+        service,
+        policy_request(verification_ref=verification(status=status, score=9_500)),
+    )
+
+    assert result.decision is decision
+    assert result.reason_codes == (reason,)
+
+
+def test_status_only_and_unconstrained_verification_behavior_is_preserved() -> None:
+    _status_session, status_service = setup_with_rule(
+        PolicyRule(
+            rule_id="status-only",
+            effect=PolicyRuleEffect.ALLOW,
+            action_types=("purchase",),
+            capabilities=("authorize",),
+            required_verification_status=VerificationStatus.VERIFIED,
+        )
+    )
+    missing = evaluate(status_service, policy_request(verification_ref=None))
+    verified = evaluate(
+        status_service,
+        policy_request(verification_ref=verification(VerificationStatus.VERIFIED)),
+    )
+    assert missing.decision is PolicyDecision.BLOCK
+    assert verified.decision is PolicyDecision.ALLOW
+
+    _optional_session, optional_service = setup_with_rule(
+        PolicyRule(
+            rule_id="verification-optional",
+            effect=PolicyRuleEffect.ALLOW,
+            action_types=("purchase",),
+            capabilities=("authorize",),
+        )
+    )
+    optional = evaluate(optional_service, policy_request(verification_ref=None))
+    assert optional.decision is PolicyDecision.ALLOW
+
+
+def test_required_assurance_is_independent_of_verification_constraints() -> None:
+    _session, service = setup_with_rule(
+        PolicyRule(
+            rule_id="assurance-only",
+            effect=PolicyRuleEffect.ALLOW,
+            action_types=("purchase",),
+            capabilities=("authorize",),
+            required_assurance=AssuranceLevel.HIGH,
+        )
+    )
+
+    result = evaluate(
+        service,
+        policy_request(verification_ref=None, assurance=AssuranceLevel.STANDARD),
+    )
+
+    assert result.decision is PolicyDecision.RETRY_HIGHER_ASSURANCE
+    assert result.reason_codes == (PolicyEvaluationReason.ASSURANCE_INSUFFICIENT,)
+
+
 def test_insufficient_assurance_retries() -> None:
     _session, service = setup()
 
@@ -301,6 +461,122 @@ def test_action_limit_and_destination_constraints() -> None:
     assert too_large.reason_codes == (PolicyEvaluationReason.ACTION_LIMIT_EXCEEDED,)
     assert bad_destination.decision is PolicyDecision.BLOCK
     assert bad_destination.reason_codes == (PolicyEvaluationReason.DESTINATION_NOT_ALLOWED,)
+
+
+@pytest.mark.parametrize(
+    ("destination_present", "destination"),
+    [(False, None), (True, None), (True, 123), (True, ["merchant-a"])],
+)
+def test_allowed_destination_constraint_rejects_missing_or_invalid_destination(
+    destination_present: bool,
+    destination: object,
+) -> None:
+    _session, service = setup()
+    action = material()
+    action.pop("destination")
+    if destination_present:
+        action["destination"] = destination
+
+    result = evaluate(service, request(material_action=action))
+
+    assert result.decision is PolicyDecision.BLOCK
+    assert result.reason_codes == (PolicyEvaluationReason.DESTINATION_NOT_ALLOWED,)
+
+
+@pytest.mark.parametrize(
+    ("destination_present", "destination"),
+    [(False, None), (True, None), (True, 123), (True, ["merchant-a"])],
+)
+def test_blocked_destination_constraint_rejects_missing_or_invalid_destination(
+    destination_present: bool,
+    destination: object,
+) -> None:
+    session = build_session()
+    account = session.scalar(select(Account))
+    assert account is not None
+    account.id = ACCOUNT_ID
+    service = PolicyEvaluationService(session, clock=lambda: NOW)
+    service.publish(
+        policy(
+            rules=(
+                PolicyRule(
+                    rule_id="allow-unblocked-purchase",
+                    effect=PolicyRuleEffect.ALLOW,
+                    action_types=("purchase",),
+                    capabilities=("authorize",),
+                    blocked_destinations=("merchant-b",),
+                ),
+            )
+        )
+    )
+    action = material()
+    action.pop("destination")
+    if destination_present:
+        action["destination"] = destination
+
+    result = evaluate(service, request(material_action=action))
+
+    assert result.decision is PolicyDecision.BLOCK
+    assert result.reason_codes == (PolicyEvaluationReason.DESTINATION_NOT_ALLOWED,)
+
+
+def test_destination_remains_optional_without_destination_constraints() -> None:
+    session = build_session()
+    account = session.scalar(select(Account))
+    assert account is not None
+    account.id = ACCOUNT_ID
+    service = PolicyEvaluationService(session, clock=lambda: NOW)
+    service.publish(
+        policy(
+            rules=(
+                PolicyRule(
+                    rule_id="allow-purchase-without-destination-constraint",
+                    effect=PolicyRuleEffect.ALLOW,
+                    action_types=("purchase",),
+                    capabilities=("authorize",),
+                ),
+            )
+        )
+    )
+    action = material()
+    action.pop("destination")
+
+    result = evaluate(service, request(material_action=action))
+
+    assert result.decision is PolicyDecision.ALLOW
+    assert result.reason_codes == (PolicyEvaluationReason.POLICY_ALLOWED,)
+
+
+def test_both_destination_constraints_preserve_valid_string_semantics() -> None:
+    session = build_session()
+    account = session.scalar(select(Account))
+    assert account is not None
+    account.id = ACCOUNT_ID
+    service = PolicyEvaluationService(session, clock=lambda: NOW)
+    service.publish(
+        policy(
+            rules=(
+                PolicyRule(
+                    rule_id="allow-selected-unblocked-destination",
+                    effect=PolicyRuleEffect.ALLOW,
+                    action_types=("purchase",),
+                    capabilities=("authorize",),
+                    allowed_destinations=("merchant-a", "merchant-b"),
+                    blocked_destinations=("merchant-b",),
+                ),
+            )
+        )
+    )
+
+    allowed = evaluate(service, request(material_action=material(destination="merchant-a")))
+    blocked = evaluate(service, request(material_action=material(destination="merchant-b")))
+    disallowed = evaluate(service, request(material_action=material(destination="merchant-c")))
+
+    assert allowed.decision is PolicyDecision.ALLOW
+    assert blocked.decision is PolicyDecision.BLOCK
+    assert disallowed.decision is PolicyDecision.BLOCK
+    assert blocked.reason_codes == (PolicyEvaluationReason.DESTINATION_NOT_ALLOWED,)
+    assert disallowed.reason_codes == (PolicyEvaluationReason.DESTINATION_NOT_ALLOWED,)
 
 
 def test_material_change_can_alter_decision_but_ephemeral_does_not() -> None:

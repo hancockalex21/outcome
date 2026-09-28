@@ -44,6 +44,25 @@ The operator must deploy the Prompt 31 topology, inject a non-development receip
 
 Use existing operator procedures to issue an `oc_agent_*` key. Do not transmit account identity in the request; Outcome derives it from the credential. Publish the policy described above as version 1. Use a `TEST_ACCEPTANCE`-identified funding operation through the ledger service. Never expose policy admin or funding as public MCP tools.
 
+## Independent Agent Controlled-Beta Provisioning
+
+`scripts/independent_agent_operator.py` provisions one isolated identity for the first test through an independently developed MCP client. Its deterministic account, agent, policy, verification, funding provenance, and credential are distinct from the completed Prompt 32 acceptance fixture.
+
+Run it once through the operator-controlled database path, using an operator-specified temporary output file:
+
+```bash
+.venv/bin/python scripts/independent_agent_operator.py \
+  --database-url '<OPERATOR_DATABASE_URL>' \
+  --environment controlled-beta \
+  --output '/tmp/outcome-independent-agent-credential.json'
+```
+
+The command creates exactly one `authorize:write` credential and exactly 1,000,000 micro-USD—one USD—of prepaid funding through `LedgerService.fund_account`. It publishes one policy limited to `controlled_beta_test`, the `authorize` capability, zero action amount, and destination `synthetic-resource`, with VERIFIED status, STANDARD assurance, and Evidence Score ≥9000. It also creates one deterministic VERIFIED result with score 9500. It does not call Stripe, configure providers, or perform an external action.
+
+The output file is created with mode 0600 and contains only `api_key`, `policy_id`, and `verification_result_id`. The API key is shown nowhere else and must be transferred directly into the MCP client's secret storage, never copied into source control, documentation, chat, screenshots, or logs. The policy and verification-result identifiers currently require out-of-band onboarding because Outcome does not expose public policy administration or fixture discovery.
+
+Provisioning fails closed if the output path or any component of this deterministic identity already exists. Do not rerun it to rotate a key or add funds. This fixture proves only a synthetic authorization workflow; it does not validate real-world evidence or verification accuracy.
+
 ## Run the external client
 
 ```bash

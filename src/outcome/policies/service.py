@@ -347,7 +347,10 @@ class PolicyEvaluationService:
         request: PolicyEvaluationRequest,
         rule: PolicyRule,
     ) -> tuple[PolicyDecision, PolicyEvaluationReason] | None:
-        if rule.required_verification_status is None:
+        if (
+            rule.required_verification_status is None
+            and rule.minimum_evidence_score is None
+        ):
             return None
         if request.verification is None:
             return PolicyDecision.BLOCK, PolicyEvaluationReason.VERIFICATION_REQUIRED
@@ -360,7 +363,10 @@ class PolicyEvaluationService:
             return PolicyDecision.BLOCK, PolicyEvaluationReason.VERIFICATION_CONTRADICTED
         if verification.status is VerificationStatus.INCONCLUSIVE:
             return rule.inconclusive_decision, PolicyEvaluationReason.VERIFICATION_INCONCLUSIVE
-        if verification.status is not rule.required_verification_status:
+        if (
+            rule.required_verification_status is not None
+            and verification.status is not rule.required_verification_status
+        ):
             return PolicyDecision.BLOCK, PolicyEvaluationReason.VERIFICATION_REQUIRED
         if (
             rule.minimum_evidence_score is not None
@@ -648,7 +654,7 @@ def _destination_allowed(request: PolicyEvaluationRequest, rule: PolicyRule) -> 
     value = request.material_action.get("destination")
     destination = value if isinstance(value, str) else None
     if destination is None:
-        return True
+        return not rule.allowed_destinations and not rule.blocked_destinations
     if destination in set(rule.blocked_destinations):
         return False
     return not rule.allowed_destinations or destination in set(rule.allowed_destinations)

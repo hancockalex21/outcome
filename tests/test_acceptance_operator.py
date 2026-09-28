@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -16,11 +17,18 @@ from outcome.db.models import (
     Policy,
     VerificationResult,
 )
+from outcome.domain import AssuranceLevel, PolicyDecision
 from outcome.ledger import LedgerAccount, LedgerDirection, LedgerService
+from outcome.policies import (
+    PolicyEvaluationRequest,
+    PolicyEvaluationService,
+    verification_reference_from_model,
+)
 from scripts.acceptance_operator import (
     ACCOUNT_ID,
     AGENT_ID,
     FUNDING_AMOUNT_MICRO_USD,
+    POLICY_ID,
     VERIFICATION_RESULT_ID,
 )
 
@@ -111,6 +119,27 @@ def test_controlled_beta_provisioning_is_minimal_and_fails_closed_on_rerun(
         assert verification is not None
         assert verification.status == "VERIFIED"
         assert verification.evidence_score_basis_points == 9_500
+        decision = PolicyEvaluationService(session).evaluate(
+            PolicyEvaluationRequest(
+                account_id=ACCOUNT_ID,
+                policy_id=POLICY_ID,
+                policy_version=1,
+                material_action={
+                    "action_type": "controlled_beta_test",
+                    "capability": "authorize",
+                    "amount_micro_usd": 0,
+                    "currency": "USD",
+                    "destination": "synthetic-resource",
+                    "operation": "record-test-marker",
+                    "resource": "synthetic-resource",
+                },
+                action_schema_version="action.material.v1",
+                assurance_level=AssuranceLevel.STANDARD,
+                verification=verification_reference_from_model(verification),
+            ),
+            correlation_id=uuid4(),
+        )
+        assert decision.decision is PolicyDecision.ALLOW
 
     assert plaintext_key.encode() not in database.read_bytes()
 
