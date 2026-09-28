@@ -137,6 +137,18 @@ Run startup validation:
 make production-smoke
 ```
 
+## CI Database And Cache Topology
+
+The primary CI job provisions PostgreSQL 16 and Redis 7 service containers. `make test` keeps
+SQLite for isolated unit tests, runs the complete Alembic upgrade/downgrade chain against a
+temporary PostgreSQL database, runs PostgreSQL concurrency tests, and exercises Redis-backed
+reservation, billing, and MCP tests. `OUTCOME_POSTGRES_ADMIN_URL` is required for the migration
+test; without it that integration test skips explicitly rather than pretending SQLite is the
+production migration target.
+
+A separate CI job runs `make acceptance-local`. That job launches the Compose production-shaped
+PostgreSQL/Redis/MCP topology and executes the Prompt 32 client as an external subprocess.
+
 ## Safe Smoke Test
 
 After deploy:

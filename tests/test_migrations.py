@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import importlib
+import os
+import subprocess
+import sys
+from uuid import uuid4
 
+import pytest
 import sqlalchemy as sa
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
+from sqlalchemy.engine import make_url
 
 from outcome.db import models  # noqa: F401
 from outcome.db.metadata import metadata
@@ -131,123 +134,60 @@ def test_ledger_money_columns_are_integer_microdollars() -> None:
 
 
 def test_control_plane_migration_upgrades_and_downgrades() -> None:
-    base_migration = importlib.import_module(
-        "migrations.versions.20260910_0001_create_control_plane_tables"
-    )
-    api_key_migration = importlib.import_module(
-        "migrations.versions.20260910_0002_add_agent_api_key_fields"
-    )
-    ledger_migration = importlib.import_module(
-        "migrations.versions.20260910_0003_add_double_entry_ledger_fields"
-    )
-    receipt_migration = importlib.import_module(
-        "migrations.versions.20260910_0004_add_signed_receipt_fields"
-    )
-    consumption_migration = importlib.import_module(
-        "migrations.versions.20260914_0005_add_receipt_consumptions"
-    )
-    provider_rights_migration = importlib.import_module(
-        "migrations.versions.20260914_0006_add_provider_rights_fields"
-    )
-    customer_credentials_migration = importlib.import_module(
-        "migrations.versions.20260914_0007_add_customer_provider_credentials"
-    )
-    inert_evidence_migration = importlib.import_module(
-        "migrations.versions.20260914_0008_add_inert_evidence_fields"
-    )
-    evidence_lineage_migration = importlib.import_module(
-        "migrations.versions.20260914_0009_add_evidence_lineage"
-    )
-    provider_health_migration = importlib.import_module(
-        "migrations.versions.20260914_0010_add_provider_health_metrics"
-    )
-    verification_score_migration = importlib.import_module(
-        "migrations.versions.20260914_0011_add_verification_score_factors"
-    )
-    verification_orchestration_migration = importlib.import_module(
-        "migrations.versions.20260915_0012_add_verification_orchestration_metadata"
-    )
-    policy_hash_migration = importlib.import_module(
-        "migrations.versions.20260915_0013_add_policy_hash_metadata"
-    )
-    authorization_orchestration_migration = importlib.import_module(
-        "migrations.versions.20260915_0014_add_authorization_orchestration_metadata"
-    )
-    provider_attempt_async_migration = importlib.import_module(
-        "migrations.versions.20260917_0015_add_provider_attempt_async_metadata"
-    )
-    account_funding_migration = importlib.import_module(
-        "migrations.versions.20260917_0016_add_account_funding"
-    )
-    authorization_billing_migration = importlib.import_module(
-        "migrations.versions.20260917_0017_add_authorization_billing"
-    )
-    engine = sa.create_engine("sqlite:///:memory:")
+    admin_url_value = os.environ.get("OUTCOME_POSTGRES_ADMIN_URL")
+    if not admin_url_value:
+        pytest.skip("OUTCOME_POSTGRES_ADMIN_URL is not configured")
 
-    with engine.begin() as connection:
-        context = MigrationContext.configure(connection)
-        operations = Operations(context)
-        base_migration.op = operations
-        api_key_migration.op = operations
-        ledger_migration.op = operations
-        receipt_migration.op = operations
-        consumption_migration.op = operations
-        provider_rights_migration.op = operations
-        customer_credentials_migration.op = operations
-        inert_evidence_migration.op = operations
-        evidence_lineage_migration.op = operations
-        provider_health_migration.op = operations
-        verification_score_migration.op = operations
-        verification_orchestration_migration.op = operations
-        policy_hash_migration.op = operations
-        authorization_orchestration_migration.op = operations
-        provider_attempt_async_migration.op = operations
-        account_funding_migration.op = operations
-        authorization_billing_migration.op = operations
+    database_name = f"outcome_migration_{uuid4().hex}"
+    admin_url = make_url(admin_url_value).set(drivername="postgresql+psycopg")
+    test_sync_url = admin_url.set(database=database_name)
+    test_async_url = test_sync_url.set(drivername="postgresql+asyncpg")
+    admin_engine = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")
+    database_created = False
+    try:
+        with admin_engine.connect() as connection:
+            connection.exec_driver_sql(f'CREATE DATABASE "{database_name}"')
+        database_created = True
 
-        base_migration.upgrade()
-        api_key_migration.upgrade()
-        ledger_migration.upgrade()
-        receipt_migration.upgrade()
-        consumption_migration.upgrade()
-        provider_rights_migration.upgrade()
-        customer_credentials_migration.upgrade()
-        inert_evidence_migration.upgrade()
-        evidence_lineage_migration.upgrade()
-        provider_health_migration.upgrade()
-        verification_score_migration.upgrade()
-        verification_orchestration_migration.upgrade()
-        policy_hash_migration.upgrade()
-        authorization_orchestration_migration.upgrade()
-        provider_attempt_async_migration.upgrade()
-        account_funding_migration.upgrade()
-        authorization_billing_migration.upgrade()
+        migration_environment = os.environ.copy()
+        migration_environment["OUTCOME_DATABASE_URL"] = test_async_url.render_as_string(
+            hide_password=False
+        )
+        _run_alembic("upgrade", "head", environment=migration_environment)
 
-        inspector = sa.inspect(connection)
-        assert EXPECTED_TABLES <= set(inspector.get_table_names())
-        assert EXPECTED_INDEXES <= {
-            index["name"]
-            for table_name in EXPECTED_TABLES
-            for index in inspector.get_indexes(table_name)
-        }
+        test_engine = sa.create_engine(test_sync_url)
+        try:
+            with test_engine.connect() as connection:
+                inspector = sa.inspect(connection)
+                assert EXPECTED_TABLES <= set(inspector.get_table_names())
+                assert EXPECTED_INDEXES <= {
+                    index["name"]
+                    for table_name in EXPECTED_TABLES
+                    for index in inspector.get_indexes(table_name)
+                }
 
-        authorization_billing_migration.downgrade()
-        account_funding_migration.downgrade()
-        provider_attempt_async_migration.downgrade()
-        authorization_orchestration_migration.downgrade()
-        policy_hash_migration.downgrade()
-        verification_orchestration_migration.downgrade()
-        verification_score_migration.downgrade()
-        provider_health_migration.downgrade()
-        evidence_lineage_migration.downgrade()
-        inert_evidence_migration.downgrade()
-        customer_credentials_migration.downgrade()
-        provider_rights_migration.downgrade()
-        consumption_migration.downgrade()
-        receipt_migration.downgrade()
-        ledger_migration.downgrade()
-        api_key_migration.downgrade()
-        base_migration.downgrade()
+            _run_alembic("downgrade", "base", environment=migration_environment)
+            with test_engine.connect() as connection:
+                assert set(sa.inspect(connection).get_table_names()) == {"alembic_version"}
+                assert connection.exec_driver_sql(
+                    "SELECT version_num FROM alembic_version"
+                ).all() == []
+        finally:
+            test_engine.dispose()
+    finally:
+        if database_created:
+            with admin_engine.connect() as connection:
+                connection.exec_driver_sql(
+                    f'DROP DATABASE IF EXISTS "{database_name}" WITH (FORCE)'
+                )
+        admin_engine.dispose()
 
-        inspector = sa.inspect(connection)
-        assert set(inspector.get_table_names()) == set()
+
+def _run_alembic(*arguments: str, environment: dict[str, str]) -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", *arguments],
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
