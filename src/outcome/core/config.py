@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     mcp_allowed_hosts: tuple[str, ...] = ("localhost", "127.0.0.1")
     mcp_receipt_signing_key_id: str = "outcome-mcp-dev-key"
     mcp_receipt_private_key_b64: str = ""
+    mcp_local_schema_bootstrap_enabled: bool = False
     redis_url: str = "redis://localhost:6379/0"
     redis_socket_timeout_seconds: int = Field(default=3, ge=1, le=30)
     reservation_ttl_seconds: int = Field(default=900, ge=60, le=7200)
@@ -116,6 +117,8 @@ def validate_startup_config(settings: Settings, *, process_role: ProcessRole) ->
             errors.append("remote MCP authorization requires OUTCOME_MCP_RECEIPT_PRIVATE_KEY_B64")
         if process_role == "mcp" and settings.mcp_database_url.startswith("sqlite:"):
             errors.append("production remote MCP must not use local SQLite")
+        if settings.mcp_local_schema_bootstrap_enabled:
+            errors.append("production must not enable local MCP schema bootstrap")
         if settings.stripe_funding_enabled and (
             not settings.stripe_secret_key or not settings.stripe_webhook_secret
         ):

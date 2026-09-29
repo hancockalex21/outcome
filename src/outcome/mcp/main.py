@@ -13,7 +13,7 @@ from outcome.authorization import AuthorizationOrchestrator
 from outcome.billing import AuthorizationBillingService
 from outcome.core.config import get_settings, validate_startup_config
 from outcome.core.logging import configure_logging
-from outcome.db.metadata import metadata
+from outcome.db.schema_startup import prepare_mcp_schema
 from outcome.execution import ExecutionAuthorizationValidator, ReceiptConsumptionService
 from outcome.ledger import LedgerService
 from outcome.policies import PolicyEvaluationService
@@ -34,7 +34,7 @@ from .server import OutcomeApplicationServices, OutcomeMCPDependencies, create_m
 def build_session_factory() -> Callable[[], Session]:
     settings = get_settings()
     engine = create_engine(settings.mcp_database_url)
-    metadata.create_all(engine)
+    prepare_mcp_schema(engine, settings)
     return sessionmaker(bind=engine)
 
 

@@ -11,6 +11,7 @@ from sqlalchemy.engine import make_url
 
 from outcome.db import models  # noqa: F401
 from outcome.db.metadata import metadata
+from outcome.operations import inspect_beta_registration_schema
 
 EXPECTED_TABLES = {
     "accounts",
@@ -165,6 +166,12 @@ def test_control_plane_migration_upgrades_and_downgrades() -> None:
                     for table_name in EXPECTED_TABLES
                     for index in inspector.get_indexes(table_name)
                 }
+
+            with test_engine.connect() as connection:
+                with connection.begin():
+                    connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+                    beta_report = inspect_beta_registration_schema(connection)
+                assert beta_report.passed, beta_report.to_safe_dict()
 
             _run_alembic("downgrade", "base", environment=migration_environment)
             with test_engine.connect() as connection:

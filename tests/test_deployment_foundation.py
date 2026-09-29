@@ -27,6 +27,18 @@ def test_production_rejects_unsafe_mcp_defaults() -> None:
     assert "SQLite" in message
 
 
+def test_production_rejects_local_schema_bootstrap() -> None:
+    settings = Settings(
+        env="production",
+        mcp_local_schema_bootstrap_enabled=True,
+        mcp_receipt_signing_key_id="outcome-production-key",
+        mcp_receipt_private_key_b64="configured",
+        mcp_database_url="postgresql+psycopg://outcome@postgres/outcome",
+    )
+    with pytest.raises(ConfigValidationError, match="must not enable"):
+        validate_startup_config(settings, process_role="mcp")
+
+
 def test_production_rejects_wildcard_cors_and_bad_reservation_ttl() -> None:
     settings = Settings(
         env="production",

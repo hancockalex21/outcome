@@ -10,13 +10,21 @@ or Fly.io. The repository intentionally keeps vendor-specific files out of the c
 the required primitives are containers, HTTPS ingress, managed Postgres, managed Redis, secret
 environment variables, health checks, and logs.
 
-Run one release migration job per deploy:
+Run one release migration job per deploy, and require it to complete successfully before starting
+or replacing any API, MCP, or worker process:
 
 ```bash
 alembic upgrade head
 ```
 
-Do not run migrations from every API/MCP/worker replica.
+Do not run migrations from every API/MCP/worker replica. Alembic is the exclusive owner of
+production schema changes. Production MCP startup performs a read-only check that the database is
+at the packaged Alembic head and that all mapped tables exist. It exits with a migration-first
+error when either condition is false; it never creates or repairs schema.
+
+`OUTCOME_MCP_LOCAL_SCHEMA_BOOTSTRAP_ENABLED` is only for explicit local/test fixture workflows.
+Production configuration rejects it. The Compose development MCP enables it because that local
+workflow intentionally creates disposable fixture schema.
 
 ## Process Topology
 
@@ -94,6 +102,20 @@ Safe aggregate reporting requires a read-only-capable database connection:
 
 Run `make beta-metrics` in an operator process where the platform secret manager injects
 `OUTCOME_BETA_REGISTRATION_DATABASE_URL`; do not put database credentials in shell history.
+
+Before reconciling a deployment involving migration `20260929_0018`, run the read-only schema
+inspection helper from an operator process where the same variable is injected by the platform
+secret manager:
+
+```bash
+make inspect-beta-schema
+```
+
+The helper starts a read-only PostgreSQL transaction and emits a concise JSON PASS/FAIL report for
+the Alembic revision, both beta tables, their migration-defined columns, defaults, keys,
+constraints and index, plus capacity, tenant/reference, promotional-ledger, and registration
+invariants. It does not print the database URL, mutate data, repair schema, or stamp Alembic. A
+PASS is evidence for an operator-reviewed reconciliation decision; it does not itself perform one.
 
 Development mode keeps local defaults usable.
 

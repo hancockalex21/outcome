@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test security-test security-check migrate dev mcp mcp-http benchmark benchmark-report benchmark-update-golden production-smoke acceptance-local beta-metrics
+.PHONY: install lint typecheck test security-test security-check migrate dev mcp mcp-http benchmark benchmark-report benchmark-update-golden production-smoke acceptance-local beta-metrics inspect-beta-schema
 
 PYTHON ?= python3.12
 VENV ?= .venv
@@ -53,3 +53,6 @@ acceptance-local:
 
 beta-metrics:
 	$(BIN)/python scripts/beta_metrics.py
+
+inspect-beta-schema:
+	$(BIN)/python scripts/inspect_beta_schema.py
