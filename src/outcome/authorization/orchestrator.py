@@ -49,6 +49,7 @@ from outcome.verification import (
     VerificationOrchestrationResult,
     VerificationOrchestrator,
     VerificationRequestEnvelope,
+    verification_request_fingerprint,
 )
 
 AUTHORIZATION_REQUEST_SCHEMA_VERSION = "authorization.request.v1"
@@ -168,9 +169,7 @@ class AuthorizationOrchestrator:
         billing_service: AuthorizationBillingService | None = None,
         audit_service: AuditService | None = None,
         clock: Callable[[], datetime] | None = None,
-        max_authorization_ttl: timedelta = timedelta(
-            seconds=DEFAULT_MAX_AUTHORIZATION_TTL_SECONDS
-        ),
+        max_authorization_ttl: timedelta = timedelta(seconds=DEFAULT_MAX_AUTHORIZATION_TTL_SECONDS),
     ) -> None:
         self.session = session
         self.audit_service = audit_service or AuditService(session)
@@ -1014,22 +1013,27 @@ class AuthorizationOrchestrator:
 
 
 def authorization_request_fingerprint(material: AuthorizationMaterial) -> str:
+    fingerprint_material: dict[str, object] = {
+        "action_schema_version": material.action_schema_version,
+        "assurance_level": material.assurance_level.value,
+        "authorization_expires_at": _aware_utc(material.authorization_expires_at)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z"),
+        "material_action": material.material_action,
+        "policy_id": str(material.policy_id),
+        "policy_version": material.policy_version,
+        "request_config_version": material.request_config_version,
+        "verification_required": material.verification_required,
+        "verification_result_id": (
+            str(material.verification_result_id) if material.verification_result_id else None
+        ),
+    }
+    if material.verification_request is not None:
+        fingerprint_material["verification_request_fingerprint"] = verification_request_fingerprint(
+            material.verification_request.material
+        )
     canonical = canonical_material_json(
-        material={
-            "action_schema_version": material.action_schema_version,
-            "assurance_level": material.assurance_level.value,
-            "authorization_expires_at": _aware_utc(
-                material.authorization_expires_at
-            ).isoformat(timespec="microseconds").replace("+00:00", "Z"),
-            "material_action": material.material_action,
-            "policy_id": str(material.policy_id),
-            "policy_version": material.policy_version,
-            "request_config_version": material.request_config_version,
-            "verification_required": material.verification_required,
-            "verification_result_id": (
-                str(material.verification_result_id) if material.verification_result_id else None
-            ),
-        },
+        material=fingerprint_material,
         action_schema_version=AUTHORIZATION_REQUEST_SCHEMA_VERSION,
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

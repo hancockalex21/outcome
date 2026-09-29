@@ -3,14 +3,20 @@
   "service_version": "0.1.0",
   "mcp_adapter_version": "outcome-mcp-v1",
   "supported_interfaces": ["mcp-stdio", "mcp-streamable-http"],
-  "supported_tools": ["outcome_verify", "outcome_authorize"],
+  "purpose": "Verify bounded claims and authorize one exact material action before execution.",
+  "supported_tools": [
+    "outcome_verify",
+    "outcome_authorize",
+    "outcome_execute_authorized"
+  ],
   "optional_tools": ["outcome_capabilities"],
   "authentication": {
     "required": true,
     "scheme": "Authorization: Bearer oc_agent_*",
     "scopes": {
       "outcome_verify": "verify:write",
-      "outcome_authorize": "authorize:write"
+      "outcome_authorize": "authorize:write",
+      "outcome_execute_authorized": "authorize:write"
     }
   },
   "verification_modes": ["INLINE", "PARALLEL", "ASYNC"],
@@ -25,14 +31,43 @@
   "receipt_support": {
     "signed_authorization_receipts": true,
     "allow_only": true,
-    "private_signing_keys_exposed": false
+    "private_signing_keys_exposed": false,
+    "does_not_execute_underlying_action": true,
+    "optional_one_time_server_validation_and_consumption": true
+  },
+  "workflow": [
+    "Call outcome_verify when only a bounded claim decision is needed.",
+    "Call outcome_authorize before an external, financial, or otherwise material action.",
+    "Provide policy_id plus policy_version, or omit both for tenant-local fail-closed resolution.",
+    "For required verification, provide a tenant-owned verification_result_id or a verification_claim plus verification_subject for internal verification.",
+    "ALLOW returns a signed receipt bound to the exact material action; it does not execute the action.",
+    "At the execution boundary, outcome_execute_authorized can validate and consume the receipt once without executing the action."
+  ],
+  "policy_resolution": {
+    "explicit_supported": true,
+    "automatic_scope": "currently effective published policies in authenticated tenant",
+    "no_match": "fail closed: NO_APPLICABLE_POLICY",
+    "multiple_matches": "fail closed: AMBIGUOUS_POLICY"
+  },
+  "verification_security": {
+    "client_may_assert_status_or_score": false,
+    "result_ids_are_tenant_checked": true,
+    "claim_authorization_uses": "VerificationOrchestrator"
+  },
+  "decision_recovery": {
+    "ALLOW": "Use the signed receipt only for the exact action before expiry.",
+    "BLOCK": "Do not execute; correct the action or policy/evidence issue before a new request.",
+    "RETRY_HIGHER_ASSURANCE": "Retry at the required higher assurance with a new idempotency key.",
+    "ESCALATE": "Do not execute; route to the account's configured review process."
   },
   "billing": {
     "model": "prepaid",
     "currency": "USD",
     "internal_unit": "micro_usd",
     "source_of_truth": "Postgres double-entry ledger",
-    "redis_role": "temporary reservation layer"
+    "redis_role": "temporary reservation layer",
+    "idempotent_replay_second_charge": false,
+    "insufficient_funds": "fail closed"
   },
   "evidence_score": {
     "scale": "0-10000",

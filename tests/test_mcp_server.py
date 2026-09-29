@@ -238,6 +238,11 @@ async def test_mcp_tool_discovery_and_schema(redis_client: Redis) -> None:
         PolicyDecision.RETRY_HIGHER_ASSURANCE.value
         in capabilities.structured_content["policy_decisions"]
     )
+    assert capabilities.structured_content["receipt_does_not_execute"] is True
+    assert "fail closed" in capabilities.structured_content["policy_resolution"]
+    assert set(capabilities.structured_content["decision_recovery"]) == {
+        decision.value for decision in PolicyDecision
+    }
 
 
 @pytest.mark.asyncio
@@ -402,6 +407,140 @@ async def test_agent_style_authorize_returns_signed_receipt(redis_client: Redis)
         correlation_id=uuid4(),
     )
     assert execution.executable is True
+
+
+@pytest.mark.asyncio
+async def test_authorize_resolves_single_tenant_policy_and_keeps_explicit_compatible(
+    redis_client: Redis,
+) -> None:
+    session = build_session()
+    add_policy(session)
+    verification_result_id = add_verification_result(session)
+    fund_account(session, amount=10_000_000)
+    key = make_key(session, ApiKeyScope.AUTHORIZE_WRITE)
+    automatic = authorize_request(f"Bearer {key}", verification_result_id)
+    automatic.pop("policy_id")
+    automatic.pop("policy_version")
+    explicit = authorize_request(f"Bearer {key}", verification_result_id)
+    explicit["idempotency_key"] = "mcp-explicit-policy"
+
+    async with Client(mcp_server(session, redis_client)) as client:
+        resolved = await client.call_tool("outcome_authorize", {"request": automatic})
+        selected = await client.call_tool("outcome_authorize", {"request": explicit})
+
+    assert resolved.structured_content["data"]["policy_id"] == str(POLICY_ID)
+    assert selected.structured_content["data"]["policy_id"] == str(POLICY_ID)
+    assert resolved.structured_content["data"]["decision"] == PolicyDecision.ALLOW.value
+    assert selected.structured_content["data"]["decision"] == PolicyDecision.ALLOW.value
+
+
+@pytest.mark.asyncio
+async def test_authorize_policy_resolution_none_and_ambiguous_fail_closed(
+    redis_client: Redis,
+) -> None:
+    session = build_session()
+    add_policy(session)
+    verification_result_id = add_verification_result(session)
+    key = make_key(session, ApiKeyScope.AUTHORIZE_WRITE)
+    no_match = authorize_request(f"Bearer {key}", verification_result_id)
+    no_match.pop("policy_id")
+    no_match.pop("policy_version")
+    no_match["action"]["material"]["action_type"] = "unknown"
+
+    async with Client(mcp_server(session, redis_client)) as client:
+        missing = await client.call_tool("outcome_authorize", {"request": no_match})
+
+    assert missing.structured_content["ok"] is False
+    assert missing.structured_content["error_code"] == "NO_APPLICABLE_POLICY"
+
+    add_policy(
+        session,
+        DeterministicPolicy(
+            policy_id=uuid4(),
+            account_id=ACCOUNT_ID,
+            name="second-applicable-policy",
+            version=1,
+            enabled=True,
+            action_schema_version=ACTION_SCHEMA_VERSION,
+            rules=(
+                PolicyRule(
+                    rule_id="second-allow",
+                    effect=PolicyRuleEffect.ALLOW,
+                    action_types=("purchase",),
+                    capabilities=("authorize",),
+                ),
+            ),
+            effective_at=NOW,
+        ),
+    )
+    ambiguous = authorize_request(f"Bearer {key}", verification_result_id)
+    ambiguous.pop("policy_id")
+    ambiguous.pop("policy_version")
+    ambiguous["idempotency_key"] = "ambiguous-policy"
+    async with Client(mcp_server(session, redis_client)) as client:
+        result = await client.call_tool("outcome_authorize", {"request": ambiguous})
+
+    assert result.structured_content["ok"] is False
+    assert result.structured_content["error_code"] == "AMBIGUOUS_POLICY"
+
+
+@pytest.mark.asyncio
+async def test_authorize_claim_uses_internal_verification_without_client_status(
+    redis_client: Redis,
+) -> None:
+    session = build_session()
+    add_policy(session)
+    fund_account(session)
+    key = make_key(session, ApiKeyScope.AUTHORIZE_WRITE)
+    request = authorize_request(f"Bearer {key}", uuid4())
+    request["verification_result_id"] = None
+    request["verification_claim"] = "merchant exists"
+    request["verification_subject"] = "merchant-a"
+
+    async with Client(mcp_server(session, redis_client)) as client:
+        result = await client.call_tool("outcome_authorize", {"request": request})
+
+    response = result.structured_content
+    assert response["ok"] is True
+    assert response["data"]["decision"] == PolicyDecision.ESCALATE.value
+    assert response["data"]["verification_result_id"] is not None
+    assert "PROVIDER_FAILURE" in response["data"]["reason_codes"]
+
+
+@pytest.mark.asyncio
+async def test_authorize_claim_is_bound_to_authorization_idempotency(
+    redis_client: Redis,
+) -> None:
+    session = build_session()
+    add_policy(session)
+    fund_account(session, amount=5_000_000)
+    key = make_key(session, ApiKeyScope.AUTHORIZE_WRITE)
+    request = authorize_request(f"Bearer {key}", uuid4())
+    request["verification_result_id"] = None
+    request["verification_claim"] = "merchant exists"
+    request["verification_subject"] = "merchant-a"
+    changed = {**request, "verification_claim": "different claim"}
+
+    async with Client(mcp_server(session, redis_client)) as client:
+        first = await client.call_tool("outcome_authorize", {"request": request})
+        conflict = await client.call_tool("outcome_authorize", {"request": changed})
+
+    assert first.structured_content["ok"] is True
+    assert conflict.structured_content["ok"] is False
+    assert conflict.structured_content["error_code"] == "IDEMPOTENCY_CONFLICT"
+
+
+def test_authorize_schema_rejects_spoofed_verification_and_crossed_inputs() -> None:
+    request = authorize_request("Bearer test", uuid4())
+    request["verification_status"] = VerificationStatus.VERIFIED.value
+    with pytest.raises(ValidationError):
+        MCPAuthorizeRequest.model_validate(request)
+
+    request = authorize_request("Bearer test", uuid4())
+    request["verification_claim"] = "merchant exists"
+    request["verification_subject"] = "merchant-a"
+    with pytest.raises(ValidationError):
+        MCPAuthorizeRequest.model_validate(request)
 
 
 @pytest.mark.asyncio
@@ -597,6 +736,11 @@ def test_discovery_document_is_safe_and_accurate() -> None:
     assert "provider_secret" not in forbidden
     assert "api_key" not in forbidden
     assert document["evidence_score"]["not_a_probability"] is True
+    assert document["receipt_support"]["does_not_execute_underlying_action"] is True
+    assert document["policy_resolution"]["no_match"].endswith("NO_APPLICABLE_POLICY")
+    assert document["policy_resolution"]["multiple_matches"].endswith("AMBIGUOUS_POLICY")
+    assert document["verification_security"]["client_may_assert_status_or_score"] is False
+    assert set(document["decision_recovery"]) == {decision.value for decision in PolicyDecision}
 
 
 @pytest.mark.asyncio

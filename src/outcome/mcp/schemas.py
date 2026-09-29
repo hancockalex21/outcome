@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from outcome.actions import ACTION_SCHEMA_VERSION
 from outcome.domain import AssuranceLevel, PolicyDecision, VerificationMode, VerificationStatus
@@ -44,14 +44,38 @@ class MCPVerifyRequest(MCPAuthenticatedRequest):
 
 class MCPAuthorizeRequest(MCPAuthenticatedRequest):
     idempotency_key: IdempotencyKey
-    policy_id: UUID
-    policy_version: Annotated[int, Field(ge=1)]
+    policy_id: UUID | None = Field(
+        default=None,
+        description="Explicit tenant policy. Omit with policy_version for fail-closed resolution.",
+    )
+    policy_version: Annotated[int | None, Field(ge=1)] = None
     action: AuthorizeAction
     requested_assurance: AssuranceLevel = AssuranceLevel.STANDARD
     authorization_expires_at: datetime
     verification_required: bool = True
     verification_result_id: UUID | None = None
+    verification_claim: Annotated[str | None, Field(min_length=1, max_length=4096)] = None
+    verification_subject: Annotated[str | None, Field(min_length=1, max_length=4096)] = None
     client_reference_id: Annotated[str | None, Field(min_length=1, max_length=255)] = None
+
+    @model_validator(mode="after")
+    def validate_linked_fields(self) -> MCPAuthorizeRequest:
+        if (self.policy_id is None) != (self.policy_version is None):
+            raise ValueError("policy_id and policy_version must be supplied together")
+        claim_fields = (self.verification_claim, self.verification_subject)
+        if (claim_fields[0] is None) != (claim_fields[1] is None):
+            raise ValueError(
+                "verification_claim and verification_subject must be supplied together"
+            )
+        if self.verification_result_id is not None and claim_fields[0] is not None:
+            raise ValueError("use either verification_result_id or a verification claim, not both")
+        if (
+            self.verification_required
+            and self.verification_result_id is None
+            and claim_fields[0] is None
+        ):
+            raise ValueError("verification requires verification_result_id or claim and subject")
+        return self
 
 
 class MCPConsumeReceiptRequest(MCPAuthenticatedRequest):
@@ -80,6 +104,8 @@ class MCPErrorCode(str):
     IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT"
     INSUFFICIENT_FUNDS = "INSUFFICIENT_FUNDS"
     POLICY_BLOCK = "POLICY_BLOCK"
+    NO_APPLICABLE_POLICY = "NO_APPLICABLE_POLICY"
+    AMBIGUOUS_POLICY = "AMBIGUOUS_POLICY"
     RETRY_HIGHER_ASSURANCE = "RETRY_HIGHER_ASSURANCE"
     ESCALATION_REQUIRED = "ESCALATION_REQUIRED"
     SYSTEM_FAILURE = "SYSTEM_FAILURE"
@@ -104,6 +130,8 @@ class MCPAuthorizeData(MCPSchema):
     authorization_request_id: UUID
     authorization_result_id: UUID | None
     decision: PolicyDecision
+    policy_id: UUID
+    policy_version: int
     action_hash: str | None
     material_hash: str
     receipt_id: UUID | None
@@ -121,13 +149,9 @@ class MCPToolResponse(MCPSchema):
     tool_version: Literal["outcome-mcp-v1"] = "outcome-mcp-v1"
     error_code: str | None = None
     reason_codes: tuple[ReasonCode, ...] = ()
-    data: (
-        MCPVerifyData
-        | MCPAuthorizeData
-        | MCPConsumeReceiptData
-        | dict[str, JsonValue]
-        | None
-    ) = None
+    data: MCPVerifyData | MCPAuthorizeData | MCPConsumeReceiptData | dict[str, JsonValue] | None = (
+        None
+    )
 
 
 class OutcomeCapabilities(MCPSchema):
@@ -152,4 +176,40 @@ class OutcomeCapabilities(MCPSchema):
     billing_model: str = "prepaid integer micro-USD; Postgres ledger is authoritative"
     evidence_score_description: str = (
         "0-10000 deterministic evidence-strength score; not a calibrated probability"
+    )
+    purpose: str = "Verify bounded claims and authorize one exact material action before execution."
+    workflow: tuple[str, ...] = (
+        "Call outcome_verify when only a claim decision is needed.",
+        "Call outcome_authorize before an external, financial, or otherwise material action.",
+        "Provide policy_id plus policy_version, or omit both for tenant-local "
+        "fail-closed resolution.",
+        "For required verification, provide an existing verification_result_id or "
+        "provide verification_claim plus verification_subject for internal verification.",
+        "An ALLOW receipt authorizes only the exact bound action and never executes it.",
+        "Optionally call outcome_execute_authorized at the execution boundary to validate "
+        "and consume the receipt once; that tool still does not execute the action.",
+    )
+    policy_resolution: str = (
+        "Explicit selection is supported. Automatic selection considers only currently "
+        "effective published policies in the authenticated tenant; zero or multiple "
+        "applicable policies fail closed."
+    )
+    verification_security: str = (
+        "Clients cannot assert verification status or score. Result IDs are tenant checked; "
+        "claim-based authorization uses Outcome's VerificationOrchestrator."
+    )
+    decision_recovery: dict[str, str] = {
+        "ALLOW": "Use the signed receipt only for the exact action before expiry.",
+        "BLOCK": (
+            "Do not execute; correct the action or policy/evidence issue before a new request."
+        ),
+        "RETRY_HIGHER_ASSURANCE": (
+            "Submit a new request at the required higher assurance with a new idempotency key."
+        ),
+        "ESCALATE": "Do not execute; route to the account's configured human or review process.",
+    }
+    receipt_does_not_execute: Literal[True] = True
+    billing_behavior: str = (
+        "Authorization uses prepaid micro-USD credit. Idempotent replay does not create a "
+        "second charge; insufficient funds fail closed."
     )

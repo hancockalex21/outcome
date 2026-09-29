@@ -2,9 +2,11 @@
 
 Outcome is an independent trust and authorization control plane for autonomous AI agents.
 
-This repository is a production-oriented skeleton only. It includes application wiring,
-local infrastructure, migrations, tests, and developer commands, but no Outcome product
-logic yet.
+This repository contains Outcome's policy, verification, authorization, billing, signed
+receipt, and execution-boundary validation services.
+
+New hosted-MCP users can start without this repository: see the
+[external developer quickstart](docs/getting-started/external-mcp-quickstart.md).
 
 ## Quick Start
 

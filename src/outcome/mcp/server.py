@@ -24,13 +24,14 @@ from outcome.authorization import (
     AuthorizationRequestEnvelope,
     CrossTenantAuthorizationAccess,
 )
-from outcome.domain import PolicyDecision, VerificationStatus
+from outcome.domain import PolicyDecision, VerificationMode, VerificationStatus
 from outcome.execution import (
     ExecutionAuthorizationRequest,
     ReceiptConsumptionResult,
     ReceiptConsumptionService,
     ReceiptConsumptionStatus,
 )
+from outcome.policies import AmbiguousPolicyResolution, NoApplicablePolicy
 from outcome.pricing import CapabilityName
 from outcome.receipts import ReceiptPayload, SignedReceipt
 from outcome.verification import (
@@ -205,6 +206,12 @@ class OutcomeMCPService:
         except (AuthorizationIdempotencyConflict, VerificationIdempotencyConflict):
             session.rollback()
             return _error_response("IDEMPOTENCY_CONFLICT")
+        except NoApplicablePolicy:
+            session.rollback()
+            return _error_response("NO_APPLICABLE_POLICY")
+        except AmbiguousPolicyResolution:
+            session.rollback()
+            return _error_response("AMBIGUOUS_POLICY")
         except (
             AuthorizationOrchestrationError,
             VerificationOrchestrationError,
@@ -267,6 +274,34 @@ class OutcomeApplicationServices:
         request: MCPAuthorizeRequest,
         correlation_id: UUID,
     ) -> AuthorizationOrchestrationResult:
+        policy_id = request.policy_id
+        policy_version = request.policy_version
+        if policy_id is None or policy_version is None:
+            policy = self.authorization_orchestrator.policy_service.resolve_applicable(
+                account_id=identity.account_id,
+                material_action=request.action.material,
+                action_schema_version=request.action.action_schema_version,
+            )
+            policy_id = policy.policy_id
+            policy_version = policy.version
+        verification_request = None
+        if request.verification_claim is not None and request.verification_subject is not None:
+            verification_request = VerificationRequestEnvelope(
+                authenticated=AuthenticatedVerificationContext(
+                    account_id=identity.account_id,
+                    agent_id=identity.agent_id,
+                ),
+                material=VerificationMaterial(
+                    capability=CapabilityName.VERIFY,
+                    mode=VerificationMode.INLINE,
+                    assurance=request.requested_assurance,
+                    claim={"claim": request.verification_claim},
+                    subject={"subject": request.verification_subject},
+                    provider_ids=(),
+                ),
+                idempotency_key=f"{request.idempotency_key}:verification",
+                correlation_id=correlation_id,
+            )
         return await self.authorization_orchestrator.authorize_async(
             AuthorizationRequestEnvelope(
                 authenticated=AuthenticatedAuthorizationContext(
@@ -274,14 +309,15 @@ class OutcomeApplicationServices:
                     agent_id=identity.agent_id,
                 ),
                 material=AuthorizationMaterial(
-                    policy_id=request.policy_id,
-                    policy_version=request.policy_version,
+                    policy_id=policy_id,
+                    policy_version=policy_version,
                     material_action=request.action.material,
                     action_schema_version=request.action.action_schema_version,
                     assurance_level=request.requested_assurance,
                     authorization_expires_at=request.authorization_expires_at,
                     verification_required=request.verification_required,
                     verification_result_id=request.verification_result_id,
+                    verification_request=verification_request,
                 ),
                 idempotency_key=request.idempotency_key,
                 correlation_id=correlation_id,
@@ -317,8 +353,9 @@ def create_mcp_server(dependencies: OutcomeMCPDependencies) -> MCPServer:
         description=MCP_SERVER_DESCRIPTION,
         version=OUTCOME_SERVICE_VERSION,
         instructions=(
-            "Use outcome_verify for verification and outcome_authorize for authorization. "
-            "Authenticate with an existing Outcome API key."
+            "Call outcome_capabilities first. Use outcome_verify for a bounded claim and "
+            "outcome_authorize before an exact material action. Outcome never executes the "
+            "underlying action. Authenticate with an Outcome agent API key."
         ),
     )
 
@@ -420,6 +457,8 @@ def _success_response(result: object) -> MCPToolResponse:
                 authorization_request_id=result.authorization_request_id,
                 authorization_result_id=result.authorization_result_id,
                 decision=result.decision,
+                policy_id=result.policy_id,
+                policy_version=result.policy_version,
                 action_hash=result.action_hash,
                 material_hash=result.material_hash,
                 receipt_id=result.receipt_id,

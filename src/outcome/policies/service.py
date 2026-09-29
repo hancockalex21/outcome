@@ -39,6 +39,18 @@ class CrossTenantPolicyAccess(PermissionError):
     pass
 
 
+class PolicyResolutionError(ValueError):
+    pass
+
+
+class NoApplicablePolicy(PolicyResolutionError):
+    pass
+
+
+class AmbiguousPolicyResolution(PolicyResolutionError):
+    pass
+
+
 class PolicyRuleEffect(StrEnum):
     ALLOW = "ALLOW"
     BLOCK = "BLOCK"
@@ -175,6 +187,52 @@ class PolicyEvaluationService:
         self.session.add(row)
         self.session.flush()
         return row
+
+    def resolve_applicable(
+        self,
+        *,
+        account_id: UUID,
+        material_action: Mapping[str, object],
+        action_schema_version: str,
+        evaluated_at: datetime | None = None,
+    ) -> DeterministicPolicy:
+        """Resolve one tenant-local published policy without evaluating its decision.
+
+        Resolution deliberately uses only stable routing fields. Constraints, assurance,
+        and verification are still enforced by the normal policy evaluation path.
+        """
+        now = _aware_utc(evaluated_at or self.clock())
+        rows = self.session.scalars(
+            select(Policy).where(
+                Policy.account_id == account_id,
+                Policy.status == POLICY_STATUS_PUBLISHED,
+            )
+        ).all()
+        candidates: list[DeterministicPolicy] = []
+        for row in rows:
+            policy = policy_from_model(row)
+            if not policy.enabled or policy.action_schema_version != action_schema_version:
+                continue
+            if policy.effective_at is not None and _persisted_utc(policy.effective_at) > now:
+                continue
+            request = PolicyEvaluationRequest(
+                account_id=account_id,
+                policy_id=policy.policy_id,
+                policy_version=policy.version,
+                material_action=material_action,
+                action_schema_version=action_schema_version,
+                assurance_level=AssuranceLevel.LOW,
+                evaluated_at=now,
+            )
+            if any(_rule_matches_action(rule, request) for rule in policy.rules):
+                candidates.append(policy)
+        if not candidates:
+            raise NoApplicablePolicy("no applicable published policy in authenticated tenant")
+        if len(candidates) != 1:
+            raise AmbiguousPolicyResolution(
+                "multiple applicable published policies in authenticated tenant"
+            )
+        return candidates[0]
 
     def evaluate(
         self,
@@ -347,10 +405,7 @@ class PolicyEvaluationService:
         request: PolicyEvaluationRequest,
         rule: PolicyRule,
     ) -> tuple[PolicyDecision, PolicyEvaluationReason] | None:
-        if (
-            rule.required_verification_status is None
-            and rule.minimum_evidence_score is None
-        ):
+        if rule.required_verification_status is None and rule.minimum_evidence_score is None:
             return None
         if request.verification is None:
             return PolicyDecision.BLOCK, PolicyEvaluationReason.VERIFICATION_REQUIRED
@@ -752,6 +807,14 @@ def _timestamp(value: datetime | None) -> str | None:
 def _aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise PolicyValidationError("policy timestamps must be timezone-aware")
+    return value.astimezone(UTC)
+
+
+def _persisted_utc(value: datetime) -> datetime:
+    # SQLite drops timezone metadata even for timezone-aware columns. Persisted values
+    # are written in UTC; production Postgres retains the offset.
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
 
 

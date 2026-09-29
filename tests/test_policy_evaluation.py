@@ -11,8 +11,10 @@ from outcome.audit import AuditService
 from outcome.db.models import Account, AuditEvent, Policy, VerificationRequest, VerificationResult
 from outcome.domain import AssuranceLevel, PolicyDecision, VerificationStatus
 from outcome.policies import (
+    AmbiguousPolicyResolution,
     CrossTenantPolicyAccess,
     DeterministicPolicy,
+    NoApplicablePolicy,
     PolicyEvaluationReason,
     PolicyEvaluationRequest,
     PolicyEvaluationService,
@@ -105,6 +107,55 @@ def setup_with_rule(rule: PolicyRule) -> tuple:
     service.publish(policy(rules=(rule,)))
     session.commit()
     return session, service
+
+
+def test_resolve_applicable_policy_is_tenant_local_and_exact() -> None:
+    session, service = setup()
+    session.add(Account(id=OTHER_ACCOUNT_ID, display_name="Other", status="active"))
+    other = policy(policy_id=uuid4())
+    service.publish(
+        DeterministicPolicy(
+            policy_id=other.policy_id,
+            account_id=OTHER_ACCOUNT_ID,
+            name=other.name,
+            version=other.version,
+            enabled=other.enabled,
+            action_schema_version=other.action_schema_version,
+            rules=other.rules,
+            effective_at=other.effective_at,
+        )
+    )
+    session.commit()
+
+    resolved = service.resolve_applicable(
+        account_id=ACCOUNT_ID,
+        material_action=material(),
+        action_schema_version=ACTION_SCHEMA_VERSION,
+        evaluated_at=NOW,
+    )
+
+    assert resolved.policy_id == POLICY_ID
+
+
+def test_resolve_applicable_policy_fails_closed_for_none_or_many() -> None:
+    session, service = setup()
+    with pytest.raises(NoApplicablePolicy):
+        service.resolve_applicable(
+            account_id=ACCOUNT_ID,
+            material_action=material(action_type="unknown"),
+            action_schema_version=ACTION_SCHEMA_VERSION,
+            evaluated_at=NOW,
+        )
+
+    service.publish(policy(policy_id=uuid4()))
+    session.commit()
+    with pytest.raises(AmbiguousPolicyResolution):
+        service.resolve_applicable(
+            account_id=ACCOUNT_ID,
+            material_action=material(),
+            action_schema_version=ACTION_SCHEMA_VERSION,
+            evaluated_at=NOW,
+        )
 
 
 def policy_request(
