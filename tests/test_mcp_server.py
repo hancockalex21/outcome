@@ -22,7 +22,7 @@ from outcome.auth import AgentApiKeyAuthenticator, ApiKeyScope
 from outcome.authorization import AuthorizationOrchestrator
 from outcome.billing import AuthorizationBillingService
 from outcome.db.metadata import metadata
-from outcome.db.models import Account, Receipt
+from outcome.db.models import Account, BetaRegistrationCapacity, Receipt
 from outcome.domain import AssuranceLevel, PolicyDecision, VerificationStatus
 from outcome.execution import (
     ExecutionAuthorizationRequest,
@@ -33,6 +33,7 @@ from outcome.ledger import LedgerService
 from outcome.mcp import create_mcp_server
 from outcome.mcp.schemas import MCP_ADAPTER_VERSION, MCPAuthorizeRequest
 from outcome.mcp.server import OutcomeApplicationServices, OutcomeMCPDependencies
+from outcome.onboarding import BetaRegistrationInput, BetaRegistrationService
 from outcome.policies import (
     DeterministicPolicy,
     PolicyEvaluationService,
@@ -407,6 +408,58 @@ async def test_agent_style_authorize_returns_signed_receipt(redis_client: Redis)
         correlation_id=uuid4(),
     )
     assert execution.executable is True
+
+
+@pytest.mark.asyncio
+async def test_self_service_registration_reaches_starter_authorization(
+    redis_client: Redis,
+) -> None:
+    session = build_session()
+    existing_account = session.scalar(select(Account))
+    assert existing_account is not None
+    session.delete(existing_account)
+    session.add(BetaRegistrationCapacity(id=1, registrations_used=0))
+    session.commit()
+    with session.begin():
+        registration = BetaRegistrationService(
+            session,
+            promotional_credit_micro_usd=1_000_000,
+            registration_limit=10,
+            clock=lambda: NOW,
+        ).register(
+            BetaRegistrationInput(
+                display_name="External beta developer",
+                idempotency_key="external-beta-registration",
+            ),
+            correlation_id=uuid4(),
+        )
+    request = {
+        "authorization": f"Bearer {registration.plaintext_api_key}",
+        "idempotency_key": "starter-authorization",
+        "requested_assurance": AssuranceLevel.STANDARD.value,
+        "authorization_expires_at": (NOW + timedelta(minutes=5)).isoformat(),
+        "verification_required": False,
+        "action": {
+            "action_schema_version": ACTION_SCHEMA_VERSION,
+            "name": "controlled_beta_test",
+            "target": "synthetic-resource",
+            "material": {
+                "action_type": "controlled_beta_test",
+                "capability": "authorize",
+                "amount_micro_usd": 0,
+                "destination": "synthetic-resource",
+                "resource": "quickstart-demo",
+            },
+            "ephemeral": {},
+        },
+    }
+
+    async with Client(mcp_server(session, redis_client)) as client:
+        result = await client.call_tool("outcome_authorize", {"request": request})
+
+    assert result.structured_content["ok"] is True
+    assert result.structured_content["data"]["decision"] == PolicyDecision.ALLOW.value
+    assert result.structured_content["data"]["receipt_id"] is not None
 
 
 @pytest.mark.asyncio

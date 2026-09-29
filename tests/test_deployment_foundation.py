@@ -74,6 +74,35 @@ def test_request_id_is_bounded_and_sanitized() -> None:
     assert _bounded_request_id("x" * 129) != "x" * 129
 
 
+def test_beta_registration_is_disabled_by_default_and_misconfiguration_fails() -> None:
+    assert Settings().beta_registration_enabled is False
+    settings = Settings(
+        env="production",
+        beta_registration_enabled=True,
+        beta_registration_bootstrap_token="short",
+        beta_registration_database_url="sqlite:///unsafe.db",
+        public_mcp_endpoint="http://not-tls.example/mcp",
+    )
+    with pytest.raises(ConfigValidationError) as exc:
+        validate_startup_config(settings, process_role="api")
+    message = str(exc.value)
+    assert "at least 32" in message
+    assert "SQLite" in message
+    assert "HTTPS" in message
+
+
+def test_safe_production_beta_registration_config() -> None:
+    settings = Settings(
+        env="production",
+        beta_registration_enabled=True,
+        beta_registration_bootstrap_token="x" * 32,
+        beta_registration_database_url="postgresql+psycopg://outcome@postgres/outcome",
+        public_mcp_endpoint="https://mcp.example/mcp",
+        mcp_receipt_signing_key_id="outcome-production-key",
+    )
+    validate_startup_config(settings, process_role="api")
+
+
 def test_api_mcp_modules_do_not_import_worker_secret_material() -> None:
     import outcome.api.main as api_main
     import outcome.mcp.server as mcp_server

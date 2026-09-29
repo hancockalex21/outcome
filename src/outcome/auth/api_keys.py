@@ -53,7 +53,7 @@ class AgentApiKeyAuthenticator:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def create_development_key(
+    def create_key(
         self,
         *,
         account_id: UUID,
@@ -80,6 +80,16 @@ class AgentApiKeyAuthenticator:
         self.session.flush()
 
         return AgentApiKeyCreateResult(plaintext_key=plaintext_key, credential=credential)
+
+    def create_development_key(
+        self,
+        *,
+        account_id: UUID,
+        agent_id: UUID,
+        scopes: set[ApiKeyScope],
+    ) -> AgentApiKeyCreateResult:
+        """Backward-compatible name retained for existing controlled fixtures."""
+        return self.create_key(account_id=account_id, agent_id=agent_id, scopes=scopes)
 
     def authenticate(
         self,
@@ -154,10 +164,7 @@ def extract_key_prefix(plaintext_key: str) -> str | None:
 def hash_api_key(plaintext_key: str) -> str:
     salt = secrets.token_bytes(SALT_BYTES)
     digest = _derive_key(plaintext_key, salt)
-    return (
-        f"pbkdf2_sha256${PBKDF2_ITERATIONS}$"
-        f"{_encode_token(salt)}${_encode_token(digest)}"
-    )
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${_encode_token(salt)}${_encode_token(digest)}"
 
 
 def verify_api_key(plaintext_key: str, stored_hash: str) -> bool:

@@ -12,6 +12,10 @@ from outcome.db.models import AuditEvent
 
 
 class AuditEventType(StrEnum):
+    BETA_REGISTRATION_COMPLETED = "beta_registration_completed"
+    BETA_CREDENTIAL_CREATED = "beta_credential_created"
+    BETA_STARTER_POLICY_CREATED = "beta_starter_policy_created"
+    PROMOTIONAL_CREDIT_GRANTED = "promotional_credit_granted"
     ACCOUNT_FUNDED = "account_funded"
     REQUEST_ACCEPTED = "request_accepted"
     POLICY_SELECTED = "policy_selected"
@@ -300,6 +304,9 @@ ALLOWED_PAYLOAD_FIELDS = frozenset(
         "duration_ms",
         "mcp_tool_name",
         "mcp_tool_version",
+        "registration_id",
+        "credential_scopes",
+        "promotional_credit_micro_usd",
     }
 )
 

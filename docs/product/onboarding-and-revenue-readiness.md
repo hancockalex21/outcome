@@ -38,13 +38,13 @@ status, assurance, score, and policy checks.
 
 ### A. First external free user
 
-1. Provide a low-touch operator form/procedure for account creation, one narrow policy, and a
-   scoped credential; return the MCP endpoint and secret through a secure channel.
-2. Configure one approved bounded verification provider/path, or explicitly provision a
-   tenant-owned controlled-beta result for the synthetic workflow.
-3. Publish the external quickstart at a stable public URL and run it against production.
-4. Define credential rotation/revocation and support ownership. These exist in core services
-   but are not yet a self-service external workflow.
+The controlled-beta registration API now creates one tenant, authorization-only credential,
+starter policy, and bounded promotional balance without database manipulation. Remaining work:
+
+1. Configure and securely distribute invite tokens for the first cohort.
+2. Publish the quickstart at a stable URL and exercise registration plus authorization in production.
+3. Define the operator procedure for lost-response credential revocation and replacement.
+4. Configure a verification provider only for workflows beyond the verification-free starter action.
 
 Automatic policy resolution removes identifier transfer when the account has exactly one
 applicable policy. It intentionally does not remove operator policy provisioning.
@@ -65,8 +65,10 @@ applicable policy. It intentionally does not remove operator policy provisioning
 The prepaid-credit architecture is sufficient for measuring legitimate agent-triggered usage
 and revenue: Postgres double-entry entries are authoritative, Redis is only a reservation
 layer, prices use integer micro-USD, and authorization idempotency prevents duplicate charges.
-The blocker is customer-facing funding/credential operations and production reconciliation,
-not a new monetization model.
+Registration and promotion are not payment or revenue. The blocker is a customer-facing paid
+funding boundary and production reconciliation, not a new monetization model. `beta-metrics`
+separately reports promotional issuance, customer-paid funding, and authorization usage; usage
+must not be presented as customer-paid revenue when it was funded by promotion.
 
 ### C. Can wait until broader scale
 

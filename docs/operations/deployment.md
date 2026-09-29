@@ -69,6 +69,31 @@ Production mode rejects:
 - worker using the development secret resolver backend;
 - enabled Stripe funding without Stripe secret and webhook secret;
 - reservation TTL shorter than the configured billable execution window plus safety margin.
+- enabled beta registration without a long bootstrap token, synchronous Postgres URL, bounded
+  promotional amount, or production HTTPS MCP endpoint.
+
+## Controlled-beta registration
+
+Registration is disabled by default. Enable it only on the API process with:
+
+- `OUTCOME_BETA_REGISTRATION_ENABLED=true`
+- `OUTCOME_BETA_REGISTRATION_DATABASE_URL=postgresql+psycopg://...`
+- `OUTCOME_BETA_REGISTRATION_BOOTSTRAP_TOKEN=<managed secret, at least 32 characters>`
+- `OUTCOME_BETA_REGISTRATION_LIMIT=<bounded integer>`
+- `OUTCOME_BETA_PROMOTIONAL_CREDIT_MICRO_USD=<integer, maximum 10000000>`
+- `OUTCOME_BETA_REGISTRATION_RATE_LIMIT` and
+  `OUTCOME_BETA_REGISTRATION_RATE_WINDOW_SECONDS`
+- `OUTCOME_PUBLIC_MCP_ENDPOINT=https://.../mcp`
+- `OUTCOME_PUBLIC_QUICKSTART_URL=https://...` (optional)
+
+API replicas share authoritative capacity/idempotency state in Postgres and rate-limit state in
+Redis. Registration fails closed when either is unavailable. Store and rotate the invite token in
+the platform secret manager.
+
+Safe aggregate reporting requires a read-only-capable database connection:
+
+Run `make beta-metrics` in an operator process where the platform secret manager injects
+`OUTCOME_BETA_REGISTRATION_DATABASE_URL`; do not put database credentials in shell history.
 
 Development mode keeps local defaults usable.
 

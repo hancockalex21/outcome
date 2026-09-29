@@ -79,6 +79,50 @@ class Policy(AccountScopedMixin, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BetaRegistrationCapacity(TimestampMixin, Base):
+    __tablename__ = "beta_registration_capacity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    registrations_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class BetaRegistration(AccountScopedMixin, Base):
+    __tablename__ = "beta_registrations"
+    __table_args__ = (
+        Index("ix_beta_registrations_account_created_at", "account_id", "created_at"),
+        UniqueConstraint("idempotency_key_hash", name="uq_beta_registrations_idempotency_hash"),
+        UniqueConstraint("account_id", name="uq_beta_registrations_account"),
+        UniqueConstraint("credential_id", name="uq_beta_registrations_credential"),
+        UniqueConstraint("policy_id", name="uq_beta_registrations_policy"),
+        UniqueConstraint(
+            "promotional_ledger_transaction_id",
+            name="uq_beta_registrations_promotional_ledger",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    idempotency_key_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    credential_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("agent_credentials.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    policy_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("policies.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    promotional_ledger_transaction_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("credit_ledger_transactions.transaction_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    promotional_credit_micro_usd: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
 class ProviderRight(AccountScopedMixin, Base):
     __tablename__ = "provider_rights"
     __table_args__ = (

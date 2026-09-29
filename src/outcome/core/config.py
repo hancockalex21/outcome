@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     stripe_funding_enabled: bool = False
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    beta_registration_enabled: bool = False
+    beta_registration_database_url: str = ""
+    beta_registration_bootstrap_token: str = Field(default="", max_length=512)
+    beta_registration_limit: int = Field(default=25, ge=1, le=10_000)
+    beta_promotional_credit_micro_usd: int = Field(default=1_000_000, ge=1, le=10_000_000)
+    beta_registration_rate_limit: int = Field(default=10, ge=1, le=100)
+    beta_registration_rate_window_seconds: int = Field(default=300, ge=60, le=3600)
+    public_mcp_endpoint: str = ""
+    public_quickstart_url: str = ""
     worker_secret_resolver_backend: str = "development"
     allowed_provider_destinations: tuple[str, ...] = ()
     otel_service_name: str = "outcome-api"
@@ -113,6 +122,20 @@ def validate_startup_config(settings: Settings, *, process_role: ProcessRole) ->
             errors.append("Stripe funding requires Stripe secret and webhook secret")
         if process_role == "worker" and settings.worker_secret_resolver_backend == "development":
             errors.append("production worker must not use development secret resolver backend")
+
+    if settings.beta_registration_enabled:
+        if process_role != "api":
+            errors.append("beta registration may only be enabled in the API process")
+        if len(settings.beta_registration_bootstrap_token) < 32:
+            errors.append("beta registration bootstrap token must be at least 32 characters")
+        if not settings.beta_registration_database_url:
+            errors.append("beta registration requires a synchronous database URL")
+        if settings.beta_registration_database_url.startswith("sqlite:") and production:
+            errors.append("production beta registration must not use SQLite")
+        if not settings.public_mcp_endpoint.startswith("https://") and production:
+            errors.append("production beta registration requires an HTTPS public MCP endpoint")
+        if settings.beta_promotional_credit_micro_usd > 10_000_000:
+            errors.append("beta promotional credit exceeds the hard maximum")
 
     if errors:
         raise ConfigValidationError("; ".join(errors))

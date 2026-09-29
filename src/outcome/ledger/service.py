@@ -26,6 +26,7 @@ class LedgerAccount(StrEnum):
     SERVICE_CREDIT_REFUND_LIABILITY = "service_credit_refund_liability"
     MANUAL_ADJUSTMENT_CLEARING = "manual_adjustment_clearing"
     RESERVATION_RELEASE_CLEARING = "reservation_release_clearing"
+    PROMOTIONAL_CREDIT_EXPENSE = "promotional_credit_expense"
 
 
 class LedgerTransactionType(StrEnum):
@@ -35,6 +36,7 @@ class LedgerTransactionType(StrEnum):
     REFUND = "refund"
     MANUAL_ADJUSTMENT = "manual_adjustment"
     RESERVATION_RELEASE = "reservation_release"
+    PROMOTIONAL_CREDIT = "promotional_credit"
 
 
 class IdempotencyConflict(ValueError):
@@ -151,6 +153,35 @@ class LedgerService:
                 ),
             ),
             audit_event_type=AuditEventType.CREDIT_REFUND_ADJUSTMENT_CREATED,
+        )
+
+    def grant_promotional_credit(
+        self,
+        *,
+        account_id: UUID,
+        amount_micro_usd: int,
+        idempotency_key: str,
+        correlation_id: UUID,
+    ) -> LedgerTransaction:
+        return self._post_transaction(
+            account_id=account_id,
+            amount_micro_usd=amount_micro_usd,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            transaction_type=LedgerTransactionType.PROMOTIONAL_CREDIT,
+            postings=(
+                LedgerPosting(
+                    LedgerAccount.PROMOTIONAL_CREDIT_EXPENSE,
+                    LedgerDirection.DEBIT,
+                    amount_micro_usd,
+                ),
+                LedgerPosting(
+                    LedgerAccount.CUSTOMER_PREPAID_LIABILITY,
+                    LedgerDirection.CREDIT,
+                    amount_micro_usd,
+                ),
+            ),
+            audit_event_type=AuditEventType.PROMOTIONAL_CREDIT_GRANTED,
         )
 
     def refund_account(

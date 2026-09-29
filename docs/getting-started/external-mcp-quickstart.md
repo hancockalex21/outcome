@@ -4,15 +4,24 @@ Outcome verifies bounded claims and decides whether one exact material action ma
 It never performs the underlying action. An `ALLOW` response may contain a signed,
 short-lived receipt bound to exactly the submitted material action.
 
-## 1. Obtain a credential
+## 1. Register for the controlled beta
 
-During the hosted beta, request an account and a least-privilege agent credential from the
-Outcome operator. Use `authorize:write` for authorization and receipt consumption; add
-`verify:write` only if the agent will call `outcome_verify` directly. Store the returned
-`oc_agent_*` value in the MCP client's secret store. Do not paste it into source, chat,
-screenshots, or committed configuration.
+The operator supplies a beta invite token and public API URL. The invite is bootstrap
+authorization only; it is not an Outcome agent credential. Register once:
 
-Self-service account creation, credential issuance, and funding are not public yet.
+```bash
+curl --fail-with-body -X POST 'https://PUBLIC_OUTCOME_API/v1/beta/register' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Outcome-Beta-Token: BETA_INVITE_REDACTED' \
+  -H 'Idempotency-Key: registration-UNIQUE_RANDOM_VALUE' \
+  --data '{"display_name":"Example Developer"}'
+```
+
+The response contains the MCP endpoint, one `authorize:write` `oc_agent_*` credential, starter
+policy summary, and promotional balance. Promotional credit is service credit, not customer-paid
+balance or revenue. Store the agent credential immediately: it is returned only in the first
+successful response. A retry after a lost response creates nothing new and returns a
+recovery-required conflict. Contact the operator to revoke and replace the inaccessible key.
 
 ## 2. Configure the remote MCP server
 
@@ -44,11 +53,11 @@ Ask the agent to call `outcome_capabilities`. It describes when to verify or aut
 assurance levels, decisions, policy selection, verification inputs, billing, receipts, and
 recovery behavior. Tool schemas are also available through standard MCP discovery.
 
-## 4. Authorize a harmless action
+## 4. Authorize the starter action
 
 Use a unique idempotency key and an expiry no more than five minutes in the future. This
 example asks Outcome to resolve one applicable policy inside the authenticated tenant and
-to run verification internally:
+authorize its deliberately limited zero-value synthetic action:
 
 ```json
 {
@@ -56,9 +65,7 @@ to run verification internally:
     "idempotency_key": "quickstart-demo-001",
     "requested_assurance": "STANDARD",
     "authorization_expires_at": "2026-12-01T12:05:00Z",
-    "verification_required": true,
-    "verification_claim": "The synthetic resource exists",
-    "verification_subject": "synthetic-resource",
+    "verification_required": false,
     "action": {
       "action_schema_version": "action.material.v1",
       "name": "controlled_beta_test",
@@ -76,7 +83,8 @@ to run verification internally:
 }
 ```
 
-If onboarding supplies an explicit policy, include both `policy_id` and `policy_version`.
+If a later onboarding flow supplies an explicit policy, include both `policy_id` and
+`policy_version`.
 If it supplies an existing verification result, use `verification_result_id` instead of the
 claim and subject. Result IDs are checked against the authenticated tenant; clients cannot
 submit a verification status or score. Hosted claim-based verification requires an approved
