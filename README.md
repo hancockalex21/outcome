@@ -2,6 +2,9 @@
 
 Outcome is an independent trust and authorization control plane for autonomous AI agents.
 
+> **Status:** Outcome is currently a controlled beta. Interfaces may change before 1.0;
+> use the hosted beta only for synthetic, low-risk evaluation workflows.
+
 This repository contains Outcome's policy, verification, authorization, billing, signed
 receipt, and execution-boundary validation services.
 
@@ -50,9 +53,10 @@ make mcp
 The MCP server exposes `outcome_verify`, `outcome_authorize`, and
 `outcome_capabilities`. Tool calls authenticate with existing Outcome agent API keys
 using `Authorization: Bearer oc_agent_*` in each tool request envelope. The local
-stdio server is an adapter over the same Outcome application services; it does not
-expose provider execution, secret resolution, ledger mutation, receipt signing, or
-arbitrary HTTP/file/code tools.
+stdio server is an adapter over the same Outcome application services. It exposes no
+unrestricted ledger, signing-key, provider-execution, secret-resolution, or arbitrary
+HTTP/file/code tools. `outcome_authorize` still performs its normal auditable prepaid
+ledger settlement and, for an ALLOW decision, issues an action-bound signed receipt.
 
 Check health:
 
@@ -89,3 +93,7 @@ The default local service names are:
 
 Copy `.env.example` to `.env` for local overrides. The example file intentionally
 contains variable names only and no secret values.
+
+## License
+
+Outcome is licensed under the [Apache License 2.0](LICENSE).
